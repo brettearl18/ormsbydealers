@@ -44,4 +44,3 @@ functions/node_modules/
 
 # Service account keys (NEVER commit these)
 *-firebase-adminsdk-*.json
-

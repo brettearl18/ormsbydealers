@@ -10,7 +10,7 @@ A modern, low-cost B2B distributor/dealer portal built with Next.js, TypeScript,
 - **Shopping Cart**: Persistent cart with quantity management
 - **Order Management**: Submit purchase orders with shipping details, PO numbers, and notes
 - **Order Tracking**: View order history and status updates
-- **Admin Panel**: (Coming soon) Manage guitars, pricing, accounts, and orders
+- **Admin Panel**: Manage guitars, pricing, accounts, and orders
 
 ## Tech Stack
 
@@ -152,8 +152,10 @@ dealer-portal/
 Pricing is resolved in this priority order:
 1. **Promo price** (if valid date range)
 2. **Account override** (account-specific price)
-3. **Tier price** (based on account's tier)
-4. **Base price** (fallback)
+3. **Quantity breaks** (volume-based pricing)
+4. **Volume-based tier pricing** (tiers with min/max quantities)
+5. **Tier price** (based on account's tier)
+6. **Base price** (fallback)
 
 ## Security
 
@@ -194,4 +196,3 @@ firebase deploy
 ## License
 
 Private - Ormsby Guitars
-
