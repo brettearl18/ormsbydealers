@@ -1,0 +1,95 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'ADMIN';
+    }
+    
+    // Helper function to get user's accountId from token
+    function getUserAccountId() {
+      return request.auth.token.accountId;
+    }
+    
+    // Helper function to check if user owns the account
+    function ownsAccount(accountId) {
+      return isAuthenticated() && 
+             getUserAccountId() == accountId;
+    }
+    
+    // Users collection: users can read their own profile
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+    
+    // Accounts collection: users can read their own account
+    match /accounts/{accountId} {
+      allow read: if isAuthenticated() && ownsAccount(accountId);
+      allow write: if isAdmin();
+    }
+    
+    // Tiers collection: authenticated users can read
+    match /tiers/{tierId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Guitars collection: authenticated users can read ACTIVE guitars
+    match /guitars/{guitarId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.status == 'ACTIVE';
+      allow write: if isAdmin();
+    }
+    
+    // Availability collection: authenticated users can read
+    match /availability/{guitarId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Prices collection: authenticated users can read
+    // Note: Effective pricing is computed client-side or via Cloud Function
+    // Users should not see other accounts' overrides, but for simplicity
+    // we allow read here. The Cloud Function for order submission will
+    // compute and lock in the correct price.
+    match /prices/{priceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Orders collection: users can read/write orders for their account
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && 
+                     resource.data.accountId == getUserAccountId();
+      allow create: if isAuthenticated() && 
+                       request.resource.data.accountId == getUserAccountId() &&
+                       request.resource.data.createdByUid == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                       (resource.data.accountId == getUserAccountId() || isAdmin());
+      allow delete: if isAdmin();
+      
+      // Order lines subcollection
+      match /lines/{lineId} {
+        allow read: if isAuthenticated() && 
+                       get(/databases/$(database)/documents/orders/$(orderId)).data.accountId == getUserAccountId();
+        allow write: if isAuthenticated() && 
+                        (get(/databases/$(database)/documents/orders/$(orderId)).data.accountId == getUserAccountId() || isAdmin());
+      }
+    }
+    
+    // Admin-only collections (if any)
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
+

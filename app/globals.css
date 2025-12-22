@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #050608;
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar - Modern 2025 style */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+  background-clip: padding-box;
+}
+
+/* Focus styles - Modern glow effect */
+*:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.5);
+}
+
+/* Modern animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-in {
+  animation: slideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Glassmorphism utility - Subtle */
+.glass {
+  background: rgba(11, 13, 16, 0.6);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-strong {
+  background: rgba(11, 13, 16, 0.7);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #ffffff 0%, #f97316 50%, #ffffff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Modern glow effects */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.3),
+    0 0 40px rgba(249, 115, 22, 0.1);
+}
+
+.glow-accent-strong {
+  box-shadow: 0 0 30px rgba(249, 115, 22, 0.5),
+    0 0 60px rgba(249, 115, 22, 0.2);
+}
+
+/* Base button styles - Ensure buttons are always visible */
+button {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+button:not([disabled]) {
+  cursor: pointer;
+}
+
+button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Ensure accent buttons are visible */
+button.bg-accent,
+a.bg-accent,
+button[class*="bg-accent"],
+a[class*="bg-accent"] {
+  background-color: #F97316 !important;
+  color: #000000 !important;
+  font-weight: 600;
+}
+
+button.bg-accent:hover:not([disabled]),
+a.bg-accent:hover,
+button[class*="bg-accent"]:hover:not([disabled]),
+a[class*="bg-accent"]:hover {
+  background-color: #FDBA74 !important;
+}
+
+/* Ensure buttons with borders are visible */
+button[class*="border-white"],
+a[class*="border-white"] {
+  border-width: 1px;
+  border-style: solid;
+}
+
+button[class*="border-white"]:hover:not([disabled]),
+a[class*="border-white"]:hover {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Ensure text buttons are visible */
+button.text-white,
+a.text-white {
+  color: #ffffff !important;
+}
+
+button.text-black,
+a.text-black {
+  color: #000000 !important;
+}
+
+/* Ensure buttons with glass/transparent backgrounds have visible borders */
+button[class*="glass"],
+button[class*="bg-white"] {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+
