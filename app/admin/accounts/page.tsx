@@ -1,7 +1,7 @@
 "use client";
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { collection, getDocs, doc, updateDoc, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -28,7 +28,7 @@ interface AccountWithUsers extends AccountDoc {
   }>;
 }
 
-export default function ManageAccountsPage() {
+function ManageAccountsContent() {
   const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<AccountWithUsers[]>([]);
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
@@ -105,7 +105,6 @@ export default function ManageAccountsPage() {
   const pendingOrders = orders.filter((o) => o.status === "SUBMITTED" || o.status === "APPROVED");
 
   return (
-    <AdminGuard>
       <main className="flex flex-1 flex-col gap-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -336,6 +335,19 @@ export default function ManageAccountsPage() {
           </div>
         )}
       </main>
+  );
+}
+
+export default function ManageAccountsPage() {
+  return (
+    <AdminGuard>
+      <Suspense fallback={
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-neutral-400">Loading…</p>
+        </div>
+      }>
+        <ManageAccountsContent />
+      </Suspense>
     </AdminGuard>
   );
 }
