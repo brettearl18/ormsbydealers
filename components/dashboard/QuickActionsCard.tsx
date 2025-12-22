@@ -44,31 +44,33 @@ export function QuickActionsCard() {
       <div className="space-y-3">
         {actions.map((action) => {
           const Icon = action.icon;
-          const Component = action.disabled ? "div" : Link;
-          const props = action.disabled
-            ? {}
-            : { href: action.href };
+          const className = `group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-5 py-4 text-sm font-semibold transition-all duration-300 ${
+            action.primary
+              ? "border-accent/30 bg-gradient-to-r from-accent/10 to-accent/5 text-accent hover:border-accent/50 hover:scale-105 hover:shadow-lg hover:shadow-accent/20"
+              : "glass border-white/10 text-white hover:border-accent/30 hover:scale-105 hover:shadow-lg"
+          } ${
+            action.disabled
+              ? "cursor-not-allowed opacity-40"
+              : "cursor-pointer"
+          }`;
+
+          if (action.disabled) {
+            return (
+              <div key={action.label} className={className}>
+                <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+                <span>{action.label}</span>
+              </div>
+            );
+          }
 
           return (
-            <Component
-              key={action.label}
-              {...props}
-              className={`group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-5 py-4 text-sm font-semibold transition-all duration-300 ${
-                action.primary
-                  ? "border-accent/30 bg-gradient-to-r from-accent/10 to-accent/5 text-accent hover:border-accent/50 hover:scale-105 hover:shadow-lg hover:shadow-accent/20"
-                  : "glass border-white/10 text-white hover:border-accent/30 hover:scale-105 hover:shadow-lg"
-              } ${
-                action.disabled
-                  ? "cursor-not-allowed opacity-40"
-                  : "cursor-pointer"
-              }`}
-            >
+            <Link key={action.label} href={action.href} className={className}>
               <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
               <span>{action.label}</span>
-              {action.primary && !action.disabled && (
+              {action.primary && (
                 <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/10 to-accent/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               )}
-            </Component>
+            </Link>
           );
         })}
       </div>

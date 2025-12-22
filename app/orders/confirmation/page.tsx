@@ -3,12 +3,12 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OrderDoc } from "@/lib/types";
 
-export default function OrderConfirmationPage() {
+function OrderConfirmationContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -142,6 +142,18 @@ export default function OrderConfirmationPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function OrderConfirmationPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex flex-1 items-center justify-center">
+        <p className="text-sm text-neutral-400">Loading…</p>
+      </main>
+    }>
+      <OrderConfirmationContent />
+    </Suspense>
   );
 }
 

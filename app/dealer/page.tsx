@@ -36,10 +36,11 @@ export default function DealerDashboard() {
       setFetching(true);
       setError(null);
       try {
+        if (!user?.accountId || !user?.tierId || !user?.currency) return;
         const data = await fetchDealerGuitars({
-          accountId: user.accountId!,
-          tierId: user.tierId!,
-          currency: user.currency!,
+          accountId: user.accountId,
+          tierId: user.tierId,
+          currency: user.currency,
         });
         if (!cancelled) {
           setGuitars(data);

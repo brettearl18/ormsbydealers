@@ -39,7 +39,7 @@ export function QuickViewModal({
         name: guitar.name,
         imageUrl: guitar.heroImage ?? null,
         unitPrice: guitar.price.value,
-        priceSource: guitar.price.source,
+        priceSource: guitar.price.source as "PROMO" | "ACCOUNT_OVERRIDE" | "TIER" | "BASE" | null,
       },
       1,
     );

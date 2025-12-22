@@ -49,6 +49,7 @@ export default function OrdersPage() {
       setFetching(true);
       setError(null);
       try {
+        if (!user?.accountId) return;
         const ordersRef = collection(db, "orders");
         const q = query(
           ordersRef,

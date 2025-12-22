@@ -77,7 +77,7 @@ export default function OrderDetailPage({
         } as OrderDoc & { id: string };
 
         // Verify the order belongs to the user's account
-        if (orderData.accountId !== user.accountId) {
+        if (!user?.accountId || orderData.accountId !== user.accountId) {
           setError("You don't have permission to view this order");
           setFetching(false);
           return;

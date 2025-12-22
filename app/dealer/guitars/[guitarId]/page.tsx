@@ -328,22 +328,6 @@ export default function GuitarDetailPage({
           {guitar.specs && (
             <SpecTable
               specs={guitar.specs}
-              optionOverrides={
-                guitar.options
-                  ? guitar.options.reduce((acc, option) => {
-                      const selectedValueId = selectedOptions[option.optionId];
-                      if (selectedValueId) {
-                        const selectedValue = option.values.find(
-                          (v) => v.valueId === selectedValueId,
-                        );
-                        if (selectedValue?.specs) {
-                          return { ...acc, ...selectedValue.specs };
-                        }
-                      }
-                      return acc;
-                    }, {})
-                  : undefined
-              }
             />
           )}
         </div>
@@ -527,7 +511,7 @@ export default function GuitarDetailPage({
                             {selectedValue.priceAdjustment > 0 ? "+" : ""}
                             {new Intl.NumberFormat("en-US", {
                               style: "currency",
-                              currency: user.currency,
+                              currency: user.currency || "USD",
                             }).format(selectedValue.priceAdjustment)}
                           </span>
                         </div>
@@ -572,7 +556,7 @@ export default function GuitarDetailPage({
                             >
                               {new Intl.NumberFormat("en-US", {
                                 style: "currency",
-                                currency: user.currency,
+                                currency: user.currency || "USD",
                               }).format(break_.price)}
                               {isCurrentBreak && (
                                 <span className="ml-1.5 text-[10px]">(current)</span>
@@ -593,7 +577,7 @@ export default function GuitarDetailPage({
                 <span className="text-2xl font-bold text-accent">
                   {new Intl.NumberFormat("en-US", {
                     style: "currency",
-                    currency: user.currency,
+                    currency: user.currency || "USD",
                   }).format(calculateFinalPrice() || effectivePrice.price || 0)}
                 </span>
               </div>
@@ -607,7 +591,7 @@ export default function GuitarDetailPage({
                   <span className="text-xl font-bold text-accent">
                     {new Intl.NumberFormat("en-US", {
                       style: "currency",
-                      currency: user.currency,
+                      currency: user.currency || "USD",
                     }).format(calculateFinalPrice()! * quantity)}
                   </span>
                 </div>

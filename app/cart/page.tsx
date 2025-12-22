@@ -93,8 +93,8 @@ export default function CartPage() {
       // Recalculate effective price based on current quantity
       const effectivePrice = computeEffectivePrice({
         prices,
-        accountId: user.accountId,
-        tierId: user.tierId,
+        accountId: user.accountId!,
+        tierId: user.tierId!,
         now: new Date(),
         quantity: item.qty, // Use current quantity for volume pricing
         tiers: tiers,
