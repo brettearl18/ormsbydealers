@@ -128,27 +128,16 @@ function ManageAccountsContent() {
         ? `node scripts/setDealerClaims.mjs ${request.email}`
         : `node scripts/setDistributorClaims.mjs ${request.email}`;
 
-      if (window.confirm(
-        `Account approved! Account ID: ${accountId}\n\n` +
-        `The account and user documents have been created.\n\n` +
-        `To complete the setup, you need to set custom claims for the user.\n\n` +
-        `Run this command:\n${claimsCommand}\n\n` +
-        `Click OK to continue, or Cancel to view details.`
-      )) {
-        await fetchData();
-      } else {
-        // Show detailed information
-        alert(
-          `Account Details:\n` +
-          `Account ID: ${accountId}\n` +
-          `Email: ${request.email}\n` +
-          `Account Type: ${request.accountType}\n` +
-          `Company: ${request.companyName}\n\n` +
-          `Next Step:\n` +
-          `Run: ${claimsCommand}`
-        );
-        await fetchData();
-      }
+      alert(
+        `Account approved successfully!\n\n` +
+        `Account ID: ${accountId}\n` +
+        `Email: ${request.email}\n` +
+        `Account Type: ${request.accountType}\n` +
+        `Company: ${request.companyName}\n\n` +
+        `Next Step: Set custom claims by running:\n${claimsCommand}\n\n` +
+        `After setting claims, the user will be able to sign in and access the portal.`
+      );
+      await fetchData();
     } catch (err) {
       console.error("Error approving account request:", err);
       alert("Failed to approve account request");
