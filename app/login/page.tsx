@@ -42,25 +42,31 @@ export default function LoginPage() {
       
       // Check if user has been approved (has role and accountId)
       if (!role || !accountId) {
-        // Check if they have a pending account request
-        const requestsQuery = query(
-          collection(db, "accountRequests"),
-          where("uid", "==", userCredential.user.uid),
-          where("status", "==", "PENDING")
-        );
-        const requestsSnap = await getDocs(requestsQuery);
+        // Sign them out immediately
+        await signOut(auth);
         
-        if (!requestsSnap.empty) {
-          // User has a pending request - sign them out and show message
-          await signOut(auth);
+        // Check if they have a pending account request
+        try {
+          const requestsQuery = query(
+            collection(db, "accountRequests"),
+            where("uid", "==", userCredential.user.uid),
+            where("status", "==", "PENDING")
+          );
+          const requestsSnap = await getDocs(requestsQuery);
+          
+          if (!requestsSnap.empty) {
+            // User has a pending request
+            setError("Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.");
+          } else {
+            // No pending request found
+            setError("Your account isn't active yet. Please allow 24-48 hours for approval. If you've already registered, please wait for approval. Otherwise, please request access first.");
+          }
+        } catch (queryError: any) {
+          console.error("Error checking account request:", queryError);
+          // Default message if query fails
           setError("Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.");
-          setSubmitting(false);
-          return;
         }
         
-        // No pending request and no claims - account not set up
-        await signOut(auth);
-        setError("Your account isn't active yet. Please allow 24-48 hours for approval. If you've already registered, please wait for approval. Otherwise, please request access first.");
         setSubmitting(false);
         return;
       }
