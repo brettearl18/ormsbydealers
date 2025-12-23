@@ -1,13 +1,14 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,15 +38,45 @@ export default function LoginPage() {
       // Wait for auth state to update and get the user's role
       const token = await userCredential.user.getIdTokenResult();
       const role = token.claims.role as string | undefined;
+      const accountId = token.claims.accountId as string | undefined;
       
-      // Redirect based on role
+      // Check if user has been approved (has role and accountId)
+      if (!role || !accountId) {
+        // Check if they have a pending account request
+        const requestsQuery = query(
+          collection(db, "accountRequests"),
+          where("uid", "==", userCredential.user.uid),
+          where("status", "==", "PENDING")
+        );
+        const requestsSnap = await getDocs(requestsQuery);
+        
+        if (!requestsSnap.empty) {
+          // User has a pending request - sign them out and show message
+          await signOut(auth);
+          setError("Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.");
+          setSubmitting(false);
+          return;
+        }
+        
+        // No pending request and no claims - account not set up
+        await signOut(auth);
+        setError("Your account isn't active yet. Please allow 24-48 hours for approval. If you've already registered, please wait for approval. Otherwise, please request access first.");
+        setSubmitting(false);
+        return;
+      }
+      
+      // User is approved - redirect based on role
       if (role === "ADMIN") {
         router.push("/admin");
       } else {
         router.push("/dashboard");
       }
-    } catch (err) {
-      setError("Invalid email or password");
+    } catch (err: any) {
+      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        setError("Invalid email or password");
+      } else {
+        setError("Unable to sign in. Please try again.");
+      }
       setSubmitting(false);
     }
   }
