@@ -319,6 +319,29 @@ export default function GuitarDetailPage({
         Back to guitars
       </Link>
 
+      {/* Product Header placed near top for better mobile layout */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+          {guitar.series}
+        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          {guitar.name}
+        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-neutral-400">
+            SKU:{" "}
+            <span className="font-mono font-medium text-white">
+              {buildFinalSku()}
+            </span>
+          </p>
+          <AvailabilityBadge
+            state={availability!.state}
+            etaDate={availability!.etaDate}
+            batchName={availability!.batchName}
+          />
+        </div>
+      </div>
+
       <div className="grid gap-12 lg:grid-cols-2">
         {/* Image Carousel */}
         <div className="space-y-6">
@@ -334,26 +357,6 @@ export default function GuitarDetailPage({
 
         {/* Details */}
         <div className="flex flex-col gap-6">
-          {/* Product Header */}
-          <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-              {guitar.series}
-            </p>
-            <h1 className="text-4xl font-bold tracking-tight text-white">
-              {guitar.name}
-            </h1>
-            <div className="flex items-center gap-4">
-              <p className="text-sm text-neutral-400">
-                SKU: <span className="font-mono font-medium text-white">{buildFinalSku()}</span>
-              </p>
-              <AvailabilityBadge
-                state={availability!.state}
-                etaDate={availability!.etaDate}
-                batchName={availability!.batchName}
-              />
-            </div>
-          </div>
-
           {/* Options Selector */}
           <div className="space-y-6 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-soft">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">

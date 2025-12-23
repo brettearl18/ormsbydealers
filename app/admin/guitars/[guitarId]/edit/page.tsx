@@ -165,16 +165,16 @@ export default function EditGuitarPage({
     <AdminGuard>
       <main className="flex flex-1 flex-col gap-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
             <Link
               href="/admin/guitars"
               className="rounded-lg border border-white/10 p-2 text-neutral-400 transition hover:border-white/20 hover:text-white"
             >
               <ArrowLeftIcon className="h-5 w-5" />
             </Link>
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-white">
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-white sm:text-3xl">
                 Edit Guitar
               </h1>
               <p className="mt-2 text-sm text-neutral-400">
@@ -184,7 +184,7 @@ export default function EditGuitarPage({
           </div>
           <Link
             href={`/admin/guitars/${guitarId}/preview`}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10 sm:w-auto w-full"
           >
             <EyeIcon className="h-4 w-4" />
             Preview
@@ -192,7 +192,10 @@ export default function EditGuitarPage({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="glass-strong rounded-3xl p-8 shadow-xl">
+        <form
+          onSubmit={handleSubmit}
+          className="glass-strong rounded-3xl p-4 shadow-xl sm:p-8"
+        >
           {error && (
             <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
               <p className="text-sm text-red-400">{error}</p>
@@ -207,7 +210,9 @@ export default function EditGuitarPage({
           <div className="space-y-6">
             {/* Basic Info */}
             <div>
-              <h2 className="mb-4 text-lg font-semibold text-white">Basic Information</h2>
+              <h2 className="mb-4 text-base font-semibold text-white sm:text-lg">
+                Basic Information
+              </h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-300">
@@ -295,7 +300,9 @@ export default function EditGuitarPage({
 
             {/* Images */}
             <div>
-              <h2 className="mb-4 text-lg font-semibold text-white">Images</h2>
+              <h2 className="mb-4 text-base font-semibold text-white sm:text-lg">
+                Images
+              </h2>
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-300">
                   Image URLs (one per line)
@@ -317,7 +324,9 @@ export default function EditGuitarPage({
 
             {/* Specifications */}
             <div>
-              <h2 className="mb-4 text-lg font-semibold text-white">Specifications</h2>
+              <h2 className="mb-4 text-base font-semibold text-white sm:text-lg">
+                Specifications
+              </h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-300">
@@ -586,10 +595,10 @@ export default function EditGuitarPage({
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-4 pt-4 border-t border-white/10">
+            <div className="flex flex-col-reverse items-stretch gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
               <Link
                 href="/admin/guitars"
-                className="rounded-lg border border-white/10 px-6 py-3 text-sm font-semibold text-white transition hover:border-white/20"
+                className="rounded-lg border border-white/10 px-6 py-3 text-center text-sm font-semibold text-white transition hover:border-white/20"
               >
                 Cancel
               </Link>
@@ -597,14 +606,14 @@ export default function EditGuitarPage({
                 type="button"
                 onClick={() => saveGuitar(false)}
                 disabled={submitting}
-                className="rounded-lg border border-accent/50 bg-accent/10 px-6 py-3 text-sm font-semibold text-accent transition hover:border-accent hover:bg-accent/20 disabled:opacity-50"
+                className="rounded-lg border border-accent/50 bg-accent/10 px-6 py-3 text-sm font-semibold text-accent transition hover:border-accent hover:bg-accent/20 disabled:opacity-50 sm:min-w-[150px]"
               >
                 {submitting ? "Saving..." : "Save & Continue"}
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft disabled:opacity-50"
+                className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft disabled:opacity-50 sm:min-w-[150px]"
               >
                 {submitting ? "Saving..." : "Save & Exit"}
               </button>

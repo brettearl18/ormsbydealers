@@ -28,18 +28,22 @@ export function SpecTable({ specs, optionOverrides }: Props) {
   ].filter(row => row.value != null && row.value !== "");
 
   return (
-    <div className="rounded-2xl bg-surface/80 p-6">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+    <div className="rounded-2xl bg-surface/80 p-4 sm:p-6">
+      <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400 sm:text-sm">
         Specifications
       </h2>
       <dl className="space-y-3">
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex justify-between border-b border-neutral-800 pb-3 last:border-0 last:pb-0"
+            className="flex flex-col gap-1 border-b border-neutral-800 pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:justify-between"
           >
-            <dt className="text-sm text-neutral-500">{row.label}</dt>
-            <dd className="text-sm font-medium text-white">{row.value}</dd>
+            <dt className="text-xs font-medium text-neutral-500 sm:text-sm">
+              {row.label}
+            </dt>
+            <dd className="text-sm font-medium text-white sm:text-right">
+              {row.value}
+            </dd>
           </div>
         ))}
       </dl>

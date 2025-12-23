@@ -13,6 +13,7 @@ export function Navigation() {
   const { items } = useCart();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const cartItemCount = items.reduce((sum, item) => sum + item.qty, 0);
 
@@ -60,7 +61,7 @@ export function Navigation() {
 
   return (
     <nav className="glass-strong flex items-center justify-between border-b border-white/5 px-6 py-5">
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <Link
           href="/dashboard"
           className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent transition hover:from-accent hover:to-accent-soft"
@@ -126,7 +127,7 @@ export function Navigation() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {user.role !== "ADMIN" && (
           <Link
             href="/cart"
@@ -166,14 +167,143 @@ export function Navigation() {
           </span>
         </div>
 
+        {/* Desktop sign out */}
         <button
           onClick={handleSignOut}
           disabled={signingOut}
-          className="rounded-2xl border border-white/10 glass px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-red-500/30 hover:text-red-400 hover:scale-105 disabled:opacity-50"
+          className="hidden rounded-2xl border border-white/10 glass px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-red-500/30 hover:text-red-400 hover:scale-105 disabled:opacity-50 md:inline-flex"
         >
           {signingOut ? "Signing out..." : "Sign out"}
         </button>
+
+        {/* Mobile hamburger */}
+        <button
+          type="button"
+          onClick={() => setMobileOpen((prev) => !prev)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-neutral-200 transition hover:border-accent/40 hover:text-accent md:hidden"
+          aria-label="Toggle navigation menu"
+        >
+          <span className="sr-only">Toggle menu</span>
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            {mobileOpen ? (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            ) : (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            )}
+          </svg>
+        </button>
       </div>
+
+      {/* Mobile dropdown menu */}
+      {mobileOpen && (
+        <div className="absolute inset-x-0 top-[64px] z-40 border-b border-white/10 bg-black/95 px-4 pb-4 pt-2 shadow-lg md:hidden">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 text-xs">
+              {user.role === "ADMIN" ? (
+                <>
+                  <Link
+                    href="/admin"
+                    className="rounded-lg bg-white/10 px-3 py-2 font-semibold text-white"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Admin Dashboard
+                  </Link>
+                  <Link
+                    href="/admin/guitars"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Guitars
+                  </Link>
+                  <Link
+                    href="/admin/orders"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Orders
+                  </Link>
+                  <Link
+                    href="/admin/pricing"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Pricing
+                  </Link>
+                  <Link
+                    href="/admin/accounts"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Accounts
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-lg bg-white/10 px-3 py-2 font-semibold text-white"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/dealer"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Guitars
+                  </Link>
+                  <Link
+                    href="/orders"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Orders
+                  </Link>
+                  <Link
+                    href="/cart"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Cart ({cartItemCount})
+                  </Link>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
+              <div className="flex flex-col text-[10px] text-neutral-300">
+                <span className="truncate">{user.email}</span>
+                <span className="mt-0.5 text-[9px] uppercase tracking-wide text-neutral-500">
+                  {user.role ?? "Dealer"}
+                </span>
+              </div>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="ml-2 rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-300 transition hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+              >
+                {signingOut ? "Signing out..." : "Sign out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

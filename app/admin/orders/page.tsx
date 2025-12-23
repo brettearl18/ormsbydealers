@@ -390,15 +390,19 @@ export default function AdminOrdersPage() {
         </div>
 
         {/* Status Breakdown */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h2 className="mb-4 text-lg font-semibold text-white">Order Status Breakdown</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6">
+          <h2 className="mb-3 text-base font-semibold text-white sm:text-lg">
+            Order Status Breakdown
+          </h2>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
             {Object.entries(STATUS_LABELS).map(([status, label]) => {
               const count = stats.byStatus[status as OrderStatus];
               return (
                 <div key={status} className="text-center">
-                  <p className="text-2xl font-bold text-white">{count}</p>
-                  <p className="mt-1 text-xs text-neutral-400">{label}</p>
+                  <p className="text-lg font-bold text-white sm:text-2xl">{count}</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-400 sm:text-xs">
+                    {label}
+                  </p>
                 </div>
               );
             })}

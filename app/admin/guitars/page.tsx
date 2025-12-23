@@ -61,7 +61,7 @@ export default function AdminGuitarsPage() {
 
   return (
     <AdminGuard>
-      <main className="flex flex-1 flex-col gap-6">
+      <main className="flex flex-1 flex-col gap-6 px-4 md:px-0">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -97,14 +97,14 @@ export default function AdminGuitarsPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
             {guitars.map((guitar) => (
               <div
                 key={guitar.id}
                 className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition-all hover:border-accent/30 hover:bg-white/10 hover:shadow-xl"
               >
                 {/* Image */}
-                <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-900">
+                <div className="relative aspect-[9/16] w-full overflow-hidden bg-neutral-900 sm:aspect-[4/3]">
                   {guitar.images && guitar.images.length > 0 ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
