@@ -36,3 +36,4 @@ export function AvailabilityBadge({ state, etaDate, batchName }: Props) {
 }
 
 
+

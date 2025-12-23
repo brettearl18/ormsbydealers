@@ -177,4 +177,43 @@ export interface OrderLineDoc {
   selectedOptions?: Record<string, string>;
 }
 
+export interface AdminBrandingSettings {
+  siteName: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  supportEmail?: string;
+}
+
+export interface AdminSmtpSettings {
+  host: string;
+  port: number;
+  username?: string;
+  fromEmail: string;
+  useTls: boolean;
+}
+
+export interface AdminNotificationSettings {
+  orderCreatedEmail: boolean;
+  orderStatusChangedEmail: boolean;
+  accountRequestEmail: boolean;
+  dailySummaryEmail: boolean;
+}
+
+export interface AdminEmailTemplateSettings {
+  welcomeSubject?: string;
+  welcomeBody?: string;
+  orderConfirmationSubject?: string;
+  orderConfirmationBody?: string;
+}
+
+export interface AdminSettingsDoc {
+  branding: AdminBrandingSettings;
+  smtp?: AdminSmtpSettings | null;
+  notifications: AdminNotificationSettings;
+  emailTemplates?: AdminEmailTemplateSettings | null;
+  staffNotes?: string;
+  updatedAt: string;
+}
+
 

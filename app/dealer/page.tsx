@@ -61,6 +61,12 @@ export default function DealerDashboard() {
     };
   }, [user?.accountId, user?.tierId, user?.currency]);
 
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [loading, user, router]);
+
   // Now we can do conditional returns
   if (loading) {
     return (
@@ -69,12 +75,6 @@ export default function DealerDashboard() {
       </main>
     );
   }
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [loading, user, router]);
 
   if (!user) {
     return null;

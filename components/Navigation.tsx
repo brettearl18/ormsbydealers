@@ -4,9 +4,19 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { AdminBrandingSettings, AdminSettingsDoc } from "@/lib/types";
+
+const DEFAULT_BRANDING: AdminBrandingSettings = {
+  siteName: "Ormsby",
+  logoUrl: "",
+  primaryColor: "#ffffff",
+  secondaryColor: "#ffffff",
+  supportEmail: "",
+};
 
 export function Navigation() {
   const { user, loading } = useAuth();
@@ -14,6 +24,30 @@ export function Navigation() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+   const [branding, setBranding] = useState<AdminBrandingSettings | null>(null);
+
+  useEffect(() => {
+    async function loadBranding() {
+      try {
+        const ref = doc(db, "adminSettings", "global");
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data() as AdminSettingsDoc;
+          setBranding({
+            ...DEFAULT_BRANDING,
+            ...(data.branding || {}),
+          });
+        } else {
+          setBranding(DEFAULT_BRANDING);
+        }
+      } catch (err) {
+        console.error("Failed to load branding settings:", err);
+        setBranding(DEFAULT_BRANDING);
+      }
+    }
+
+    loadBranding();
+  }, []);
 
   const cartItemCount = items.reduce((sum, item) => sum + item.qty, 0);
 
@@ -33,7 +67,16 @@ export function Navigation() {
     return (
       <nav className="glass-strong flex items-center justify-between border-b border-white/5 px-6 py-5">
         <Link href="/" className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
-          Ormsby
+          {branding?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logoUrl}
+              alt={branding.siteName || "Ormsby"}
+              className="h-7 w-auto"
+            />
+          ) : (
+            "Ormsby"
+          )}
         </Link>
         <div className="h-8 w-24 animate-pulse rounded-2xl bg-neutral-800/50" />
       </nav>
@@ -47,7 +90,16 @@ export function Navigation() {
           href="/"
           className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent transition hover:from-accent hover:to-accent-soft"
         >
-          Ormsby
+          {branding?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logoUrl}
+              alt={branding.siteName || "Ormsby"}
+              className="h-7 w-auto"
+            />
+          ) : (
+            "Ormsby"
+          )}
         </Link>
         <Link
           href="/login"
@@ -66,7 +118,16 @@ export function Navigation() {
           href="/dashboard"
           className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent transition hover:from-accent hover:to-accent-soft"
         >
-          Ormsby
+          {branding?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logoUrl}
+              alt={branding.siteName || "Ormsby"}
+              className="h-7 w-auto"
+            />
+          ) : (
+            "Ormsby"
+          )}
         </Link>
         <div className="hidden items-center gap-2 md:flex">
           {user.role === "ADMIN" ? (
@@ -100,6 +161,12 @@ export function Navigation() {
                 className="rounded-xl border border-transparent px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-white/10 hover:text-white hover:scale-105"
               >
                 Accounts
+              </Link>
+              <Link
+                href="/admin/settings"
+                className="rounded-xl border border-transparent px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-white/10 hover:text-white hover:scale-105"
+              >
+                Settings
               </Link>
             </>
           ) : (
@@ -250,6 +317,13 @@ export function Navigation() {
                     onClick={() => setMobileOpen(false)}
                   >
                     Accounts
+                  </Link>
+                  <Link
+                    href="/admin/settings"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Settings
                   </Link>
                 </>
               ) : (

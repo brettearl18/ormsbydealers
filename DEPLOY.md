@@ -31,3 +31,4 @@ The app is configured for static export, but dynamic routes prevent this from wo
 2. Use Cloud Run/Cloud Functions (complex setup)
 3. Use Vercel (recommended, easiest)
 
+
