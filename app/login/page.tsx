@@ -40,7 +40,13 @@ export default function LoginPage() {
       const role = token.claims.role as string | undefined;
       const accountId = token.claims.accountId as string | undefined;
       
-      // Check if user has been approved (has role and accountId)
+      // Admins don't need accountId - they can sign in with just the ADMIN role
+      if (role === "ADMIN") {
+        router.push("/admin");
+        return;
+      }
+      
+      // For non-admin users, check if they have been approved (has role and accountId)
       if (!role || !accountId) {
         // Sign them out immediately
         await signOut(auth);
@@ -71,12 +77,8 @@ export default function LoginPage() {
         return;
       }
       
-      // User is approved - redirect based on role
-      if (role === "ADMIN") {
-        router.push("/admin");
-      } else {
-        router.push("/dashboard");
-      }
+      // User is approved - redirect to dashboard
+      router.push("/dashboard");
     } catch (err: any) {
       if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
         setError("Invalid email or password");
