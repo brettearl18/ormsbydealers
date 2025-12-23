@@ -4,7 +4,7 @@ import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { AccountDoc, OrderDoc, TierDoc } from "@/lib/types";
+import { AccountDoc, OrderDoc, TierDoc, OrderLineDoc, GuitarDoc } from "@/lib/types";
 import Link from "next/link";
 import {
   ArrowLeftIcon,
@@ -29,6 +29,8 @@ export default function AccountDetailPage({
   const { accountId } = use(params);
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
+  const [orderLinesMap, setOrderLinesMap] = useState<Map<string, Array<OrderLineDoc & { id: string }>>>(new Map());
+  const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +102,35 @@ export default function AccountDetailPage({
         });
         
         setOrders(ordersData);
+
+        // Fetch order lines and guitar data for all orders
+        const linesMap = new Map<string, Array<OrderLineDoc & { id: string }>>();
+        const guitarIds = new Set<string>();
+
+        for (const order of ordersData) {
+          const linesRef = collection(db, "orders", order.id, "lines");
+          const linesSnap = await getDocs(linesRef);
+          const lines = linesSnap.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Array<OrderLineDoc & { id: string }>;
+          linesMap.set(order.id, lines);
+
+          // Collect guitar IDs
+          lines.forEach((line) => guitarIds.add(line.guitarId));
+        }
+
+        setOrderLinesMap(linesMap);
+
+        // Fetch all guitar data
+        const guitars = new Map<string, GuitarDoc>();
+        for (const guitarId of guitarIds) {
+          const guitarDoc = await getDoc(doc(db, "guitars", guitarId));
+          if (guitarDoc.exists()) {
+            guitars.set(guitarId, guitarDoc.data() as GuitarDoc);
+          }
+        }
+        setGuitarsMap(guitars);
       } catch (err) {
         console.error("Error fetching account:", err);
         setError("Unable to load account");
@@ -363,62 +394,109 @@ export default function AccountDetailPage({
                   <p className="mt-4 text-sm text-neutral-400">No orders found</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {orders.map((order) => (
-                    <Link
-                      key={order.id}
-                      href={`/admin/orders/${order.id}`}
-                      className="block rounded-lg border border-white/10 bg-white/5 p-4 transition hover:border-accent/30 hover:bg-white/10"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <p className="font-semibold text-white">
-                              Order #{order.id.slice(0, 8).toUpperCase()}
-                            </p>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {orders.map((order) => {
+                    const lines = orderLinesMap.get(order.id) || [];
+                    // Get the first guitar image from order lines
+                    let primaryImage: string | null = null;
+                    for (const line of lines) {
+                      const guitar = guitarsMap.get(line.guitarId);
+                      if (guitar) {
+                        // Try option image first
+                        if (guitar.options && line.selectedOptions) {
+                          for (const option of guitar.options) {
+                            const selectedValueId = line.selectedOptions[option.optionId];
+                            if (selectedValueId) {
+                              const selectedValue = option.values.find(
+                                (v) => v.valueId === selectedValueId,
+                              );
+                              if (selectedValue?.images && selectedValue.images.length > 0) {
+                                primaryImage = selectedValue.images[0];
+                                break;
+                              }
+                            }
+                          }
+                        }
+                        // Fall back to base image
+                        if (!primaryImage && guitar.images && guitar.images.length > 0) {
+                          primaryImage = guitar.images[0];
+                          break;
+                        }
+                      }
+                    }
+
+                    return (
+                      <Link
+                        key={order.id}
+                        href={`/admin/orders/${order.id}`}
+                        className="group block overflow-hidden rounded-xl border border-white/10 bg-white/5 transition-all hover:border-accent/30 hover:bg-white/10 hover:shadow-lg"
+                      >
+                        {/* Image */}
+                        <div className="relative aspect-video w-full overflow-hidden bg-neutral-900">
+                          {primaryImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={primaryImage}
+                              alt={order.id}
+                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <DocumentTextIcon className="h-12 w-12 text-neutral-600" />
+                            </div>
+                          )}
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                          
+                          {/* Status Badge */}
+                          <div className="absolute top-3 right-3">
                             <span
-                              className={`rounded-full px-2 py-1 text-xs font-medium ${
+                              className={`rounded-full px-2 py-1 text-xs font-medium backdrop-blur-sm ${
                                 order.status === "SUBMITTED"
-                                  ? "bg-blue-500/20 text-blue-400"
+                                  ? "bg-blue-500/90 text-white"
                                   : order.status === "APPROVED"
-                                  ? "bg-green-500/20 text-green-400"
+                                  ? "bg-green-500/90 text-white"
                                   : order.status === "SHIPPED"
-                                  ? "bg-purple-500/20 text-purple-400"
+                                  ? "bg-purple-500/90 text-white"
                                   : order.status === "COMPLETED"
-                                  ? "bg-green-600/20 text-green-500"
-                                  : "bg-neutral-500/20 text-neutral-400"
+                                  ? "bg-green-600/90 text-white"
+                                  : "bg-neutral-500/90 text-white"
                               }`}
                             >
                               {order.status}
                             </span>
                           </div>
-                          <p className="mt-1 text-sm text-neutral-400">
+                        </div>
+
+                        {/* Order Info */}
+                        <div className="p-4">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="font-semibold text-white">
+                              Order #{order.id.slice(0, 8).toUpperCase()}
+                            </p>
+                            <p className="text-sm font-bold text-accent">
+                              {order.currency === "USD" ? "$" : order.currency}{" "}
+                              {order.totals.subtotal.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                          <p className="text-xs text-neutral-400">
                             {new Date(order.createdAt).toLocaleDateString("en-US", {
-                              year: "numeric",
-                              month: "long",
+                              month: "short",
                               day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
+                              year: "numeric",
                             })}
                           </p>
-                          {order.shippingAddress?.company && (
-                            <p className="mt-1 text-xs text-neutral-500">
-                              {order.shippingAddress.company}
+                          {lines.length > 0 && (
+                            <p className="mt-2 text-xs text-neutral-500">
+                              {lines.length} {lines.length === 1 ? "item" : "items"}
                             </p>
                           )}
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-white">
-                            {order.currency === "USD" ? "$" : order.currency}{" "}
-                            {order.totals.subtotal.toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
