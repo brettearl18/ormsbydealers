@@ -2,9 +2,9 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, where, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, Timestamp, doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderDoc, OrderStatus } from "@/lib/types";
+import { OrderDoc, OrderStatus, OrderLineDoc, GuitarDoc } from "@/lib/types";
 import Link from "next/link";
 import {
   DocumentTextIcon,
@@ -12,6 +12,8 @@ import {
   CalendarIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
+  DocumentArrowDownIcon,
+  PrinterIcon,
 } from "@heroicons/react/24/outline";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -34,11 +36,27 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   CANCELLED: "bg-red-500/20 text-red-400",
 };
 
+interface GuitarOrderSummary {
+  guitarId: string;
+  sku: string;
+  name: string;
+  totalQty: number;
+  variations: Array<{
+    selectedOptions: Record<string, string>;
+    qty: number;
+    orders: string[];
+  }>;
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
+  const [orderLines, setOrderLines] = useState<Map<string, Array<OrderLineDoc & { id: string }>>>(new Map());
+  const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
+  const [showReport, setShowReport] = useState(false);
+  const [reportStatusFilter, setReportStatusFilter] = useState<OrderStatus[]>(["SUBMITTED", "APPROVED", "IN_PRODUCTION"]);
 
   useEffect(() => {
     fetchOrders();
@@ -66,6 +84,35 @@ export default function AdminOrdersPage() {
         };
       }) as Array<OrderDoc & { id: string }>;
       setOrders(ordersData);
+
+      // Fetch all order lines and guitar data
+      const linesMap = new Map<string, Array<OrderLineDoc & { id: string }>>();
+      const guitarIds = new Set<string>();
+
+      for (const order of ordersData) {
+        const linesRef = collection(db, "orders", order.id, "lines");
+        const linesSnap = await getDocs(linesRef);
+        const lines = linesSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Array<OrderLineDoc & { id: string }>;
+        linesMap.set(order.id, lines);
+
+        // Collect guitar IDs
+        lines.forEach((line) => guitarIds.add(line.guitarId));
+      }
+
+      setOrderLines(linesMap);
+
+      // Fetch all guitar data
+      const guitars = new Map<string, GuitarDoc>();
+      for (const guitarId of guitarIds) {
+        const guitarDoc = await getDoc(doc(db, "guitars", guitarId));
+        if (guitarDoc.exists()) {
+          guitars.set(guitarId, guitarDoc.data() as GuitarDoc);
+        }
+      }
+      setGuitarsMap(guitars);
     } catch (err) {
       console.error("Error fetching orders:", err);
     } finally {
@@ -112,6 +159,100 @@ export default function AdminOrdersPage() {
     return acc;
   }, {} as Record<string, number>);
 
+  // Filter orders for report
+  const reportOrders = orders.filter((order) => 
+    reportStatusFilter.includes(order.status)
+  );
+
+  // Generate manufacturer report - aggregate guitars from orders
+  const generateManufacturerReport = (): GuitarOrderSummary[] => {
+    // Aggregate guitars from all order lines
+    const guitarSummary = new Map<string, GuitarOrderSummary>();
+
+    for (const order of reportOrders) {
+      const lines = orderLines.get(order.id) || [];
+      
+      for (const line of lines) {
+        const guitar = guitarsMap.get(line.guitarId);
+        const key = `${line.guitarId}-${JSON.stringify(line.selectedOptions || {})}`;
+        
+        if (!guitarSummary.has(key)) {
+          guitarSummary.set(key, {
+            guitarId: line.guitarId,
+            sku: line.sku,
+            name: line.name,
+            totalQty: 0,
+            variations: [],
+          });
+        }
+
+        const summary = guitarSummary.get(key)!;
+        summary.totalQty += line.qty;
+
+        // Track variations
+        const optionsKey = JSON.stringify(line.selectedOptions || {});
+        const existingVariation = summary.variations.find(
+          (v) => JSON.stringify(v.selectedOptions) === optionsKey
+        );
+
+        if (existingVariation) {
+          existingVariation.qty += line.qty;
+          if (!existingVariation.orders.includes(order.id)) {
+            existingVariation.orders.push(order.id);
+          }
+        } else {
+          summary.variations.push({
+            selectedOptions: line.selectedOptions || {},
+            qty: line.qty,
+            orders: [order.id],
+          });
+        }
+      }
+    }
+
+    // Convert to array and sort by total quantity (descending)
+    return Array.from(guitarSummary.values()).sort((a, b) => b.totalQty - a.totalQty);
+  };
+
+  const manufacturerReport = generateManufacturerReport();
+
+  // Export report as CSV
+  const exportReportAsCSV = () => {
+    const headers = ["SKU", "Guitar Name", "Variation", "Quantity", "Orders"];
+    const rows = manufacturerReport.flatMap((guitar) => {
+      if (guitar.variations.length === 0) {
+        return [[guitar.sku, guitar.name, "Base", guitar.totalQty, ""]];
+      }
+      return guitar.variations.map((variation) => {
+        const variationStr = Object.entries(variation.selectedOptions)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(", ");
+        return [
+          guitar.sku,
+          guitar.name,
+          variationStr || "Base",
+          variation.qty.toString(),
+          variation.orders.length.toString(),
+        ];
+      });
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `manufacturer-report-${new Date().toISOString().split("T")[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <AdminGuard>
       <main className="flex flex-1 flex-col gap-8">
@@ -125,6 +266,13 @@ export default function AdminOrdersPage() {
               View all orders, reports, and total values
             </p>
           </div>
+          <button
+            onClick={() => setShowReport(!showReport)}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:border-accent/30 hover:bg-white/10"
+          >
+            <DocumentArrowDownIcon className="h-5 w-5" />
+            {showReport ? "Hide" : "Show"} Manufacturer Report
+          </button>
         </div>
 
         {/* Statistics Cards */}
@@ -211,6 +359,164 @@ export default function AdminOrdersPage() {
             })}
           </div>
         </div>
+
+        {/* Manufacturer Report */}
+        {showReport && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-white">Manufacturer Report</h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Aggregated guitar quantities from all orders for manufacturing
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs text-neutral-400">Include Status:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(STATUS_LABELS).map(([status, label]) => {
+                      const isSelected = reportStatusFilter.includes(status as OrderStatus);
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setReportStatusFilter(reportStatusFilter.filter((s) => s !== status));
+                            } else {
+                              setReportStatusFilter([...reportStatusFilter, status as OrderStatus]);
+                            }
+                          }}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                            isSelected
+                              ? "bg-accent text-black"
+                              : "border border-white/10 bg-white/5 text-white hover:border-accent/30"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  onClick={exportReportAsCSV}
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-soft"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4" />
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-accent/30 hover:bg-white/10"
+                >
+                  <PrinterIcon className="h-4 w-4" />
+                  Print
+                </button>
+              </div>
+            </div>
+
+            {manufacturerReport.length === 0 ? (
+              <div className="rounded-lg border border-white/5 bg-black/20 p-8 text-center">
+                <p className="text-sm text-neutral-400">No guitars found in selected orders</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-white/10 bg-white/5">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        SKU
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Guitar Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Variation
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Quantity
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Orders
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {manufacturerReport.map((guitar, idx) => (
+                      <tr key={`${guitar.guitarId}-${idx}`} className="transition hover:bg-white/5">
+                        <td className="px-4 py-3 font-mono text-sm font-medium text-white">
+                          {guitar.sku}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-white">{guitar.name}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-300">
+                          {guitar.variations.length === 0 ? (
+                            <span className="text-neutral-500">Base</span>
+                          ) : (
+                            <div className="space-y-1">
+                              {guitar.variations.map((variation, vIdx) => {
+                                const variationStr = Object.entries(variation.selectedOptions)
+                                  .map(([key, value]) => `${key}: ${value}`)
+                                  .join(", ");
+                                return (
+                                  <div key={vIdx} className="text-xs">
+                                    {variationStr || "Base"}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {guitar.variations.length === 0 ? (
+                            <span className="text-lg font-bold text-accent">{guitar.totalQty}</span>
+                          ) : (
+                            <div className="space-y-1 text-right">
+                              {guitar.variations.map((variation, vIdx) => (
+                                <div key={vIdx} className="text-sm font-semibold text-white">
+                                  {variation.qty}
+                                </div>
+                              ))}
+                              <div className="border-t border-white/10 pt-1 text-xs font-bold text-accent">
+                                Total: {guitar.totalQty}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-neutral-400">
+                          {guitar.variations.length === 0 ? (
+                            <span>{reportOrders.filter((o) => orderLines.get(o.id)?.some((l) => l.guitarId === guitar.guitarId)).length}</span>
+                          ) : (
+                            <div className="space-y-1">
+                              {guitar.variations.map((variation, vIdx) => (
+                                <div key={vIdx} className="text-xs">
+                                  {variation.orders.length}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-white/10 bg-white/5">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-right font-semibold text-white">
+                        Total Quantity:
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-xl font-bold text-accent">
+                          {manufacturerReport.reduce((sum, g) => sum + g.totalQty, 0)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Filters and Search */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
