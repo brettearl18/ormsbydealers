@@ -43,6 +43,7 @@ interface GuitarOrderSummary {
   totalQty: number;
   variations: Array<{
     selectedOptions: Record<string, string>;
+    selectedOptionsLabels: Record<string, string>; // optionId -> label
     qty: number;
     orders: string[];
   }>;
@@ -200,9 +201,36 @@ export default function AdminOrdersPage() {
           if (!existingVariation.orders.includes(order.id)) {
             existingVariation.orders.push(order.id);
           }
+          // Update labels if not already set
+          if (Object.keys(existingVariation.selectedOptionsLabels).length === 0 && guitar?.options && line.selectedOptions) {
+            for (const [optionId, valueId] of Object.entries(line.selectedOptions)) {
+              const option = guitar.options.find((opt) => opt.optionId === optionId);
+              if (option) {
+                const value = option.values.find((val) => val.valueId === valueId);
+                if (value) {
+                  existingVariation.selectedOptionsLabels[optionId] = `${option.label}: ${value.label}`;
+                }
+              }
+            }
+          }
         } else {
+          // Map option IDs and value IDs to their labels
+          const selectedOptionsLabels: Record<string, string> = {};
+          if (guitar?.options && line.selectedOptions) {
+            for (const [optionId, valueId] of Object.entries(line.selectedOptions)) {
+              const option = guitar.options.find((opt) => opt.optionId === optionId);
+              if (option) {
+                const value = option.values.find((val) => val.valueId === valueId);
+                if (value) {
+                  selectedOptionsLabels[optionId] = `${option.label}: ${value.label}`;
+                }
+              }
+            }
+          }
+
           summary.variations.push({
             selectedOptions: line.selectedOptions || {},
+            selectedOptionsLabels,
             qty: line.qty,
             orders: [order.id],
           });
@@ -216,17 +244,34 @@ export default function AdminOrdersPage() {
 
   const manufacturerReport = generateManufacturerReport();
 
+  // Helper function to format variation string with labels, prioritizing colors
+  const formatVariationString = (variation: GuitarOrderSummary["variations"][0], guitar?: GuitarDoc): string => {
+    if (Object.keys(variation.selectedOptionsLabels).length === 0) {
+      return "Base";
+    }
+
+    // Sort options to prioritize colors
+    const sortedLabels = Object.entries(variation.selectedOptionsLabels).sort(([optionIdA], [optionIdB]) => {
+      const isColorA = optionIdA.toLowerCase().includes("color") || optionIdA.toLowerCase().includes("colour");
+      const isColorB = optionIdB.toLowerCase().includes("color") || optionIdB.toLowerCase().includes("colour");
+      if (isColorA && !isColorB) return -1;
+      if (!isColorA && isColorB) return 1;
+      return 0;
+    });
+
+    return sortedLabels.map(([, label]) => label).join(", ");
+  };
+
   // Export report as CSV
   const exportReportAsCSV = () => {
     const headers = ["SKU", "Guitar Name", "Variation", "Quantity", "Orders"];
     const rows = manufacturerReport.flatMap((guitar) => {
+      const guitarDoc = guitarsMap.get(guitar.guitarId);
       if (guitar.variations.length === 0) {
         return [[guitar.sku, guitar.name, "Base", guitar.totalQty, ""]];
       }
       return guitar.variations.map((variation) => {
-        const variationStr = Object.entries(variation.selectedOptions)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join(", ");
+        const variationStr = formatVariationString(variation, guitarDoc);
         return [
           guitar.sku,
           guitar.name,
@@ -455,9 +500,8 @@ export default function AdminOrdersPage() {
                           ) : (
                             <div className="space-y-1">
                               {guitar.variations.map((variation, vIdx) => {
-                                const variationStr = Object.entries(variation.selectedOptions)
-                                  .map(([key, value]) => `${key}: ${value}`)
-                                  .join(", ");
+                                const guitarDoc = guitarsMap.get(guitar.guitarId);
+                                const variationStr = formatVariationString(variation, guitarDoc);
                                 return (
                                   <div key={vIdx} className="text-xs">
                                     {variationStr || "Base"}
