@@ -2,9 +2,9 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { AccountDoc, OrderDoc } from "@/lib/types";
+import { AccountDoc, OrderDoc, TierDoc } from "@/lib/types";
 import Link from "next/link";
 import {
   ArrowLeftIcon,
@@ -29,16 +29,26 @@ export default function AccountDetailPage({
   const { accountId } = use(params);
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
+  const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingTier, setEditingTier] = useState(false);
+  const [editingCurrency, setEditingCurrency] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<string>("");
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function fetchAccount() {
       setLoading(true);
       setError(null);
       try {
-        // Fetch account
-        const accountDoc = await getDoc(doc(db, "accounts", accountId));
+        // Fetch account, tiers, and orders in parallel
+        const [accountDoc, tiersSnap] = await Promise.all([
+          getDoc(doc(db, "accounts", accountId)),
+          getDocs(collection(db, "tiers")),
+        ]);
+
         if (!accountDoc.exists()) {
           setError("Account not found");
           setLoading(false);
@@ -51,6 +61,15 @@ export default function AccountDetailPage({
           ...accountDataRaw,
         } as AccountDoc & { id: string };
         setAccount(accountData);
+        setSelectedTier(accountData.tierId);
+        setSelectedCurrency(accountData.currency);
+
+        // Fetch tiers
+        const tiersData = tiersSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Array<TierDoc & { id: string }>;
+        setTiers(tiersData.sort((a, b) => (a.order || 0) - (b.order || 0)));
 
         // Fetch orders for this account
         const ordersQuery = query(
@@ -173,22 +192,137 @@ export default function AccountDetailPage({
                 {/* Tier */}
                 <div className="flex items-start gap-3">
                   <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-neutral-400" />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
                       Pricing Tier
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-white">{account.tierId}</p>
+                    {editingTier ? (
+                      <div className="mt-1 flex items-center gap-2">
+                        <select
+                          value={selectedTier}
+                          onChange={(e) => setSelectedTier(e.target.value)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none"
+                          disabled={saving}
+                        >
+                          {tiers.map((tier) => (
+                            <option key={tier.id} value={tier.id}>
+                              {tier.name} ({tier.id})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={async () => {
+                            setSaving(true);
+                            try {
+                              await updateDoc(doc(db, "accounts", accountId), {
+                                tierId: selectedTier,
+                                updatedAt: new Date().toISOString(),
+                              });
+                              setAccount({ ...account, tierId: selectedTier });
+                              setEditingTier(false);
+                            } catch (err) {
+                              console.error("Error updating tier:", err);
+                              alert("Failed to update tier");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          disabled={saving || selectedTier === account.tierId}
+                          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-black transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTier(account.tierId);
+                            setEditingTier(false);
+                          }}
+                          disabled={saving}
+                          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-sm font-semibold text-white">{account.tierId}</p>
+                        <button
+                          onClick={() => setEditingTier(true)}
+                          className="text-xs text-accent hover:text-accent-soft"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Currency */}
                 <div className="flex items-start gap-3">
                   <CurrencyDollarIcon className="mt-1 h-5 w-5 flex-shrink-0 text-neutral-400" />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
                       Currency
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-white">{account.currency}</p>
+                    {editingCurrency ? (
+                      <div className="mt-1 flex items-center gap-2">
+                        <select
+                          value={selectedCurrency}
+                          onChange={(e) => setSelectedCurrency(e.target.value)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none"
+                          disabled={saving}
+                        >
+                          <option value="USD">USD - US Dollar</option>
+                          <option value="EUR">EUR - Euro</option>
+                          <option value="GBP">GBP - British Pound</option>
+                          <option value="AUD">AUD - Australian Dollar</option>
+                          <option value="CAD">CAD - Canadian Dollar</option>
+                          <option value="JPY">JPY - Japanese Yen</option>
+                        </select>
+                        <button
+                          onClick={async () => {
+                            setSaving(true);
+                            try {
+                              await updateDoc(doc(db, "accounts", accountId), {
+                                currency: selectedCurrency,
+                                updatedAt: new Date().toISOString(),
+                              });
+                              setAccount({ ...account, currency: selectedCurrency });
+                              setEditingCurrency(false);
+                            } catch (err) {
+                              console.error("Error updating currency:", err);
+                              alert("Failed to update currency");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          disabled={saving || selectedCurrency === account.currency}
+                          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-black transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCurrency(account.currency);
+                            setEditingCurrency(false);
+                          }}
+                          disabled={saving}
+                          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-sm font-semibold text-white">{account.currency}</p>
+                        <button
+                          onClick={() => setEditingCurrency(true)}
+                          className="text-xs text-accent hover:text-accent-soft"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -299,7 +433,7 @@ export default function AccountDetailPage({
               </h3>
               <div className="space-y-2">
                 <Link
-                  href={`/admin/accounts?tab=orders&account=${accountId}`}
+                  href={`/admin/accounts?tab=orders`}
                   className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10"
                 >
                   View All Orders
