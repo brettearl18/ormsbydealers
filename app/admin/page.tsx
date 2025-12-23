@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, where, limit } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderDoc, GuitarDoc, AccountRequestDoc } from "@/lib/types";
+import { OrderDoc, GuitarDoc, AccountRequestDoc, AvailabilityDoc } from "@/lib/types";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -28,6 +28,18 @@ export default function AdminDashboard() {
     pendingRequests: 0,
   });
   const [recentRequests, setRecentRequests] = useState<Array<AccountRequestDoc & { id: string }>>([]);
+  const [inventory, setInventory] = useState<
+    Array<{
+      id: string;
+      sku: string;
+      name: string;
+      series: string;
+      available: number;
+      allocated: number;
+      state: string;
+      etaDate?: string | null;
+    }>
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,8 +59,33 @@ export default function AdminDashboard() {
         // Fetch guitars
         const guitarsRef = collection(db, "guitars");
         const guitarsSnap = await getDocs(guitarsRef);
-        const guitars = guitarsSnap.docs.map((doc) => doc.data() as GuitarDoc);
+        const guitars = guitarsSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as GuitarDoc),
+        })) as Array<GuitarDoc & { id: string }>;
         const activeGuitars = guitars.filter((g) => g.status === "ACTIVE").length;
+
+        // Fetch availability for inventory counts
+        const availabilityRef = collection(db, "availability");
+        const availabilitySnap = await getDocs(availabilityRef);
+        const availabilityMap = new Map<string, AvailabilityDoc>();
+        availabilitySnap.docs.forEach((doc) => {
+          availabilityMap.set(doc.id, doc.data() as AvailabilityDoc);
+        });
+
+        const inventoryRows = guitars.map((g) => {
+          const availability = availabilityMap.get(g.id);
+          return {
+            id: g.id,
+            sku: g.sku,
+            name: g.name,
+            series: g.series,
+            available: availability?.qtyAvailable ?? 0,
+            allocated: availability?.qtyAllocated ?? 0,
+            state: availability?.state ?? "UNKNOWN",
+            etaDate: availability?.etaDate ?? null,
+          };
+        });
 
         // Fetch orders
         const ordersRef = collection(db, "orders");
@@ -87,6 +124,13 @@ export default function AdminDashboard() {
           pendingRequests: requestsSnap.size,
         });
         setRecentRequests(sortedRequests);
+        setInventory(
+          inventoryRows.sort((a, b) => {
+            const totalA = a.available + a.allocated;
+            const totalB = b.available + b.allocated;
+            return totalB - totalA;
+          }),
+        );
       } catch (err) {
         console.error("Error fetching stats:", err);
       } finally {
@@ -253,6 +297,93 @@ export default function AdminDashboard() {
               </Link>
             );
           })}
+        </div>
+      </div>
+
+      {/* Inventory Overview */}
+      <div>
+        <h2 className="mb-4 text-2xl font-semibold tracking-tight">
+          Inventory Overview
+        </h2>
+        <p className="mb-4 text-sm text-neutral-400">
+          Live snapshot of available and allocated stock by model.
+        </p>
+        <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/5">
+          <table className="w-full text-sm">
+            <thead className="border-b border-white/10 bg-white/5 text-xs uppercase tracking-wider text-neutral-400">
+              <tr>
+                <th className="px-4 py-3 text-left">Model</th>
+                <th className="px-4 py-3 text-left">SKU</th>
+                <th className="px-4 py-3 text-right">Available</th>
+                <th className="px-4 py-3 text-right">Allocated</th>
+                <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-right">ETA</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {inventory.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-6 text-center text-xs text-neutral-400"
+                  >
+                    No inventory data available yet.
+                  </td>
+                </tr>
+              ) : (
+                inventory.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="transition hover:bg-black/20"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-white">
+                          {item.name}
+                        </span>
+                        <span className="text-xs text-neutral-500">
+                          {item.series}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-neutral-300">
+                      {item.sku}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-accent">
+                      {item.available}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm text-neutral-300">
+                      {item.allocated}
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          item.state === "IN_STOCK"
+                            ? "bg-green-500/15 text-green-400"
+                            : item.state === "ALLOCATED"
+                            ? "bg-yellow-500/15 text-yellow-400"
+                            : item.state === "PREORDER"
+                            ? "bg-blue-500/15 text-blue-400"
+                            : "bg-neutral-500/15 text-neutral-400"
+                        }`}
+                      >
+                        {item.state.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-neutral-400">
+                      {item.etaDate
+                        ? new Date(item.etaDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
