@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderDoc, GuitarDoc, AccountRequestDoc, AvailabilityDoc } from "@/lib/types";
+import { OrderDoc, GuitarDoc, AccountRequestDoc, OrderLineDoc } from "@/lib/types";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -34,10 +34,8 @@ export default function AdminDashboard() {
       sku: string;
       name: string;
       series: string;
-      available: number;
-      allocated: number;
-      state: string;
-      etaDate?: string | null;
+      totalOrdered: number;
+      pendingOrdered: number;
     }>
   >([]);
   const [loading, setLoading] = useState(true);
@@ -65,35 +63,60 @@ export default function AdminDashboard() {
         })) as Array<GuitarDoc & { id: string }>;
         const activeGuitars = guitars.filter((g) => g.status === "ACTIVE").length;
 
-        // Fetch availability for inventory counts
-        const availabilityRef = collection(db, "availability");
-        const availabilitySnap = await getDocs(availabilityRef);
-        const availabilityMap = new Map<string, AvailabilityDoc>();
-        availabilitySnap.docs.forEach((doc) => {
-          availabilityMap.set(doc.id, doc.data() as AvailabilityDoc);
-        });
-
-        const inventoryRows = guitars.map((g) => {
-          const availability = availabilityMap.get(g.id);
-          return {
-            id: g.id,
-            sku: g.sku,
-            name: g.name,
-            series: g.series,
-            available: availability?.qtyAvailable ?? 0,
-            allocated: availability?.qtyAllocated ?? 0,
-            state: availability?.state ?? "UNKNOWN",
-            etaDate: availability?.etaDate ?? null,
-          };
-        });
-
         // Fetch orders
         const ordersRef = collection(db, "orders");
         const ordersSnap = await getDocs(ordersRef);
-        const orders = ordersSnap.docs.map((doc) => doc.data() as OrderDoc);
+        const orders = ordersSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as OrderDoc),
+        })) as Array<OrderDoc & { id: string }>;
         const pendingOrders = orders.filter(
           (o) => o.status === "SUBMITTED" || o.status === "APPROVED"
         ).length;
+
+        // Build guitar order tallies from order lines
+        const totalsByGuitar = new Map<
+          string,
+          { totalOrdered: number; pendingOrdered: number }
+        >();
+
+        const pendingStatuses: OrderDoc["status"][] = [
+          "SUBMITTED",
+          "APPROVED",
+          "IN_PRODUCTION",
+        ];
+
+        for (const order of orders) {
+          const linesRef = collection(db, "orders", order.id, "lines");
+          const linesSnap = await getDocs(linesRef);
+          const lines = linesSnap.docs.map((doc) => doc.data() as OrderLineDoc);
+
+          for (const line of lines) {
+            const current = totalsByGuitar.get(line.guitarId) ?? {
+              totalOrdered: 0,
+              pendingOrdered: 0,
+            };
+            current.totalOrdered += line.qty;
+            if (pendingStatuses.includes(order.status)) {
+              current.pendingOrdered += line.qty;
+            }
+            totalsByGuitar.set(line.guitarId, current);
+          }
+        }
+
+        const inventoryRows = guitars
+          .filter((g) => totalsByGuitar.has(g.id))
+          .map((g) => {
+            const totals = totalsByGuitar.get(g.id)!;
+            return {
+              id: g.id,
+              sku: g.sku,
+              name: g.name,
+              series: g.series,
+              totalOrdered: totals.totalOrdered,
+              pendingOrdered: totals.pendingOrdered,
+            };
+          });
 
         // Fetch accounts
         const accountsRef = collection(db, "accounts");
@@ -126,8 +149,8 @@ export default function AdminDashboard() {
         setRecentRequests(sortedRequests);
         setInventory(
           inventoryRows.sort((a, b) => {
-            const totalA = a.available + a.allocated;
-            const totalB = b.available + b.allocated;
+            const totalA = a.totalOrdered;
+            const totalB = b.totalOrdered;
             return totalB - totalA;
           }),
         );
@@ -306,7 +329,7 @@ export default function AdminDashboard() {
           Inventory Overview
         </h2>
         <p className="mb-4 text-sm text-neutral-400">
-          Live snapshot of available and allocated stock by model.
+          Tally of guitars ordered across all dealer purchase orders.
         </p>
         <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/5">
           <table className="w-full text-sm">
@@ -314,10 +337,8 @@ export default function AdminDashboard() {
               <tr>
                 <th className="px-4 py-3 text-left">Model</th>
                 <th className="px-4 py-3 text-left">SKU</th>
-                <th className="px-4 py-3 text-right">Available</th>
-                <th className="px-4 py-3 text-right">Allocated</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-right">ETA</th>
+                <th className="px-4 py-3 text-right">Total Ordered</th>
+                <th className="px-4 py-3 text-right">Pending</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -350,34 +371,10 @@ export default function AdminDashboard() {
                       {item.sku}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-semibold text-accent">
-                      {item.available}
+                      {item.totalOrdered}
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-neutral-300">
-                      {item.allocated}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          item.state === "IN_STOCK"
-                            ? "bg-green-500/15 text-green-400"
-                            : item.state === "ALLOCATED"
-                            ? "bg-yellow-500/15 text-yellow-400"
-                            : item.state === "PREORDER"
-                            ? "bg-blue-500/15 text-blue-400"
-                            : "bg-neutral-500/15 text-neutral-400"
-                        }`}
-                      >
-                        {item.state.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-neutral-400">
-                      {item.etaDate
-                        ? new Date(item.etaDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {item.pendingOrdered}
                     </td>
                   </tr>
                 ))

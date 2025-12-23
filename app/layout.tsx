@@ -4,6 +4,7 @@ import "./globals.css";
 import { ReactNode } from "react";
 import { AppProviders } from "./providers";
 import { Navigation } from "@/components/Navigation";
+import { Footer } from "@/components/Footer";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <div className="mx-auto flex min-h-screen max-w-7xl flex-col">
             <Navigation />
             <div className="flex-1">{children}</div>
+            <Footer />
           </div>
         </AppProviders>
       </body>

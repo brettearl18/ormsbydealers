@@ -127,30 +127,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* Footer - Minimal */}
-      <footer className="border-t border-white/5 bg-background px-6 py-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-            <div className="text-center sm:text-left">
-              <p className="text-xs font-medium text-white">Ormsby Guitars</p>
-              <p className="mt-0.5 text-[10px] text-neutral-500">
-                © {new Date().getFullYear()} All rights reserved.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 text-[10px] text-neutral-500">
-              <a
-                href="mailto:dealers@ormsbyguitars.com"
-                className="transition hover:text-neutral-400"
-              >
-                Contact
-              </a>
-              <span>•</span>
-              <span>Private Access Only</span>
-            </div>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
