@@ -340,15 +340,15 @@ function ManageAccountsContent() {
 
 export default function ManageAccountsPage() {
   return (
-    <AdminGuard>
-      <Suspense fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-neutral-400">Loading…</p>
-        </div>
-      }>
+    <Suspense fallback={
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-sm text-neutral-400">Loading…</p>
+      </div>
+    }>
+      <AdminGuard>
         <ManageAccountsContent />
-      </Suspense>
-    </AdminGuard>
+      </AdminGuard>
+    </Suspense>
   );
 }
 

@@ -13,7 +13,7 @@
     "rules": "storage.rules"
   },
   "hosting": {
-    "public": ".next/static",
+    "public": "out",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -22,7 +22,7 @@
     "rewrites": [
       {
         "source": "**",
-        "function": "nextjs"
+        "destination": "/index.html"
       }
     ],
     "headers": [
