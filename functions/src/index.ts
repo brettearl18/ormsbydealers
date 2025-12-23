@@ -1,9 +1,38 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import nodemailer from "nodemailer";
 
 admin.initializeApp();
 
 const db = admin.firestore();
+
+interface AdminSmtpSettings {
+  host: string;
+  port: number;
+  username?: string;
+  fromEmail: string;
+  useTls: boolean;
+}
+
+async function getSmtpSettings(): Promise<AdminSmtpSettings> {
+  const docRef = db.collection("adminSettings").doc("global");
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "SMTP settings are not configured in admin settings.",
+    );
+  }
+  const data = snap.data() as { smtp?: AdminSmtpSettings };
+  const smtp = data.smtp;
+  if (!smtp || !smtp.host || !smtp.port || !smtp.fromEmail) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "SMTP settings are incomplete. Please configure host, port and from email.",
+    );
+  }
+  return smtp;
+}
 
 interface SubmitOrderRequest {
   cartItems: Array<{
@@ -131,4 +160,87 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     );
   }
 });
+
+interface SendDealerEmailRequest {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+}
+
+export const sendDealerEmail = functions.https.onCall(
+  async (data: SendDealerEmailRequest, context: functions.https.CallableContext) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated to send emails.",
+        );
+      }
+
+      const role = context.auth.token.role as string | undefined;
+      if (role !== "ADMIN") {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only admin users can send system emails.",
+        );
+      }
+
+      const { to, subject, text, html } = data;
+      if (!to || !subject || (!text && !html)) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Email 'to', 'subject', and at least one of 'text' or 'html' are required.",
+        );
+      }
+
+      const smtp = await getSmtpSettings();
+
+      // Secret (password / API key) is stored in Functions config:
+      // firebase functions:config:set smtp.password="YOUR_SECRET"
+      const smtpPassword = functions.config().smtp?.password as
+        | string
+        | undefined;
+
+      if (!smtpPassword && smtp.username) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "SMTP password is not configured in Functions config (smtp.password).",
+        );
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.port === 465, // true for 465, false for 587/others
+        auth: smtp.username
+          ? {
+              user: smtp.username,
+              pass: smtpPassword,
+            }
+          : undefined,
+      });
+
+      await transporter.sendMail({
+        from: smtp.fromEmail,
+        to,
+        subject,
+        text,
+        html,
+      });
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error in sendDealerEmail:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to send email.",
+      );
+    }
+  },
+);
+
 
