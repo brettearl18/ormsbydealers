@@ -60,7 +60,24 @@ firebase use --add  # Select your Firebase project
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-### 5. Set Up a Test Dealer Account
+### 5. Set Up Admin Account
+
+Create an admin user and set their custom claims:
+
+```bash
+node scripts/createAdminUser.mjs guitars@ormsbyguitars.com "Ormsby123!@#"
+```
+
+This will:
+- Create the user in Firebase Auth (or update password if exists)
+- Set `role: "ADMIN"` custom claim
+
+You can also use it for other admin emails:
+```bash
+node scripts/createAdminUser.mjs <email> <password>
+```
+
+### 6. Set Up a Test Dealer Account
 
 1. Create a user in Firebase Console → Authentication → Users
 2. Run the script to set custom claims:
@@ -86,7 +103,7 @@ This creates:
 - An account (`acct_demo_ormsby`)
 - A demo guitar with availability and pricing
 
-### 6. Deploy Cloud Functions
+### 7. Deploy Cloud Functions
 
 ```bash
 cd functions
@@ -95,7 +112,7 @@ cd ..
 firebase deploy --only functions
 ```
 
-### 7. Run Development Server
+### 8. Run Development Server
 
 ```bash
 npm run dev
