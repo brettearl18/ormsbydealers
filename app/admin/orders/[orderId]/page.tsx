@@ -194,7 +194,7 @@ export default function AdminOrderDetailPage({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
-              href="/admin/accounts"
+              href="/admin/orders"
               className="rounded-lg border border-white/10 p-2 text-neutral-400 transition hover:border-white/20 hover:text-white"
             >
               <ArrowLeftIcon className="h-5 w-5" />
