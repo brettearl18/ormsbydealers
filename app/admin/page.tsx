@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderDoc, GuitarDoc } from "@/lib/types";
+import { OrderDoc, GuitarDoc, AccountRequestDoc } from "@/lib/types";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -25,7 +25,9 @@ export default function AdminDashboard() {
     totalOrders: 0,
     pendingOrders: 0,
     totalAccounts: 0,
+    pendingRequests: 0,
   });
+  const [recentRequests, setRecentRequests] = useState<Array<AccountRequestDoc & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,13 +62,31 @@ export default function AdminDashboard() {
         const accountsRef = collection(db, "accounts");
         const accountsSnap = await getDocs(accountsRef);
 
+        // Fetch pending account requests
+        const requestsRef = collection(db, "accountRequests");
+        const requestsQuery = query(requestsRef, where("status", "==", "PENDING"));
+        const requestsSnap = await getDocs(requestsQuery);
+        const requestsData = requestsSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Array<AccountRequestDoc & { id: string }>;
+        
+        // Sort by requestedAt descending and take first 3
+        const sortedRequests = requestsData.sort((a, b) => {
+          const dateA = new Date(a.requestedAt || 0).getTime();
+          const dateB = new Date(b.requestedAt || 0).getTime();
+          return dateB - dateA;
+        }).slice(0, 3);
+
         setStats({
           totalGuitars: guitars.length,
           activeGuitars,
           totalOrders: orders.length,
           pendingOrders,
           totalAccounts: accountsSnap.size,
+          pendingRequests: requestsSnap.size,
         });
+        setRecentRequests(sortedRequests);
       } catch (err) {
         console.error("Error fetching stats:", err);
       } finally {
@@ -135,7 +155,7 @@ export default function AdminDashboard() {
       </header>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <div className="glass-strong rounded-3xl p-6 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
@@ -175,12 +195,28 @@ export default function AdminDashboard() {
         <div className="glass-strong rounded-3xl p-6 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Pending
+              Pending Orders
             </p>
             <ClockIcon className="h-5 w-5 text-accent" />
           </div>
           <p className="text-3xl font-bold text-accent">{stats.pendingOrders}</p>
         </div>
+        
+        <Link
+          href="/admin/accounts?tab=requests"
+          className="glass-strong rounded-3xl p-6 shadow-xl transition-all hover:scale-105"
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+              Account Requests
+            </p>
+            <UserGroupIcon className="h-5 w-5 text-yellow-400" />
+          </div>
+          <p className="text-3xl font-bold text-yellow-400">{stats.pendingRequests}</p>
+          {stats.pendingRequests > 0 && (
+            <p className="mt-1 text-xs text-yellow-400">Needs approval</p>
+          )}
+        </Link>
 
         <div className="glass-strong rounded-3xl p-6 shadow-xl">
           <div className="mb-2 flex items-center justify-between">

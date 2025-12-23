@@ -48,22 +48,39 @@ function ManageAccountsContent() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [accountsSnap, requestsSnap, ordersSnap] = await Promise.all([
+      const [accountsSnap, ordersSnap] = await Promise.all([
         getDocs(query(collection(db, "accounts"), orderBy("name"))),
-        getDocs(query(collection(db, "accountRequests"), where("status", "==", "PENDING"), orderBy("requestedAt", "desc"))),
         getDocs(query(collection(db, "orders"), orderBy("createdAt", "desc"), where("status", "!=", "CANCELLED"))),
       ]);
+      
+      // Fetch account requests separately (without orderBy to avoid index issues)
+      let requestsSnap;
+      try {
+        requestsSnap = await getDocs(query(collection(db, "accountRequests"), where("status", "==", "PENDING"), orderBy("requestedAt", "desc")));
+      } catch (err: any) {
+        // If orderBy fails due to missing index, fetch without it and sort manually
+        console.warn("Index missing for accountRequests, sorting manually:", err);
+        requestsSnap = await getDocs(query(collection(db, "accountRequests"), where("status", "==", "PENDING")));
+      }
 
       const accountsData = accountsSnap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         status: "APPROVED" as const, // Default status, can be extended
       })) as AccountWithUsers[];
-
-      const requestsData = requestsSnap.docs.map((doc) => ({
+      
+      // Sort requests manually if orderBy failed
+      const requestsDataUnsorted = requestsSnap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) as Array<AccountRequestDoc & { id: string }>;
+      
+      // Sort by requestedAt descending
+      const requestsData = requestsDataUnsorted.sort((a, b) => {
+        const dateA = new Date(a.requestedAt || 0).getTime();
+        const dateB = new Date(b.requestedAt || 0).getTime();
+        return dateB - dateA;
+      });
 
       const ordersData = ordersSnap.docs.map((doc) => ({
         id: doc.id,
@@ -73,8 +90,12 @@ function ManageAccountsContent() {
       setAccounts(accountsData);
       setAccountRequests(requestsData);
       setOrders(ordersData);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching data:", err);
+      // Log more details about the error
+      if (err.code === 'failed-precondition') {
+        console.error("Firestore index missing. Please create the required index:", err.message);
+      }
     } finally {
       setLoading(false);
     }
