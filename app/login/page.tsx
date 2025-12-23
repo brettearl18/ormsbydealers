@@ -163,10 +163,10 @@ export default function LoginPage() {
             <p className="text-sm text-neutral-400">
               Don't have an account?{" "}
               <Link
-                href="#"
+                href="/register"
                 className="font-medium text-accent transition hover:text-accent-soft"
               >
-                Contact Ormsby Guitars
+                Request Access
               </Link>
             </p>
           </div>

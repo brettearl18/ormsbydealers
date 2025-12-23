@@ -15,6 +15,22 @@ export interface AccountDoc {
   terms?: string;
 }
 
+export interface AccountRequestDoc {
+  email: string;
+  uid: string;
+  companyName: string;
+  contactName: string;
+  accountType: "DEALER" | "DISTRIBUTOR";
+  phone?: string;
+  address?: string;
+  territory?: string;
+  notes?: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requestedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
 export interface TierDoc {
   name: string;
   description?: string;

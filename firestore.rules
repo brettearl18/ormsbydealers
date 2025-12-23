@@ -37,6 +37,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // Account requests: anyone can create, only admins can read/update
+    match /accountRequests/{requestId} {
+      allow create: if request.auth != null; // Must be authenticated to create
+      allow read, update: if isAdmin();
+    }
+    
     // Tiers collection: authenticated users can read
     match /tiers/{tierId} {
       allow read: if isAuthenticated();
