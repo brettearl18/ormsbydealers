@@ -81,7 +81,7 @@ export default function AdminGuitarsPage() {
           </Link>
         </div>
 
-        {/* Guitars Table */}
+        {/* Guitars Grid */}
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="text-sm text-neutral-400">Loading guitars...</p>
@@ -97,85 +97,94 @@ export default function AdminGuitarsPage() {
             </Link>
           </div>
         ) : (
-          <div className="glass-strong rounded-3xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b border-white/10 bg-white/5">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      SKU
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      Name
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      Series
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {guitars.map((guitar) => (
-                    <tr
-                      key={guitar.id}
-                      className="transition hover:bg-white/5"
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {guitars.map((guitar) => (
+              <div
+                key={guitar.id}
+                className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition-all hover:border-accent/30 hover:bg-white/10 hover:shadow-xl"
+              >
+                {/* Image */}
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-900">
+                  {guitar.images && guitar.images.length > 0 ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={guitar.images[0]}
+                      alt={guitar.name}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-neutral-600">
+                      No image
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                  
+                  {/* Status Badge */}
+                  <div className="absolute top-3 left-3">
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold backdrop-blur-sm ${
+                        guitar.status === "ACTIVE"
+                          ? "bg-green-500/90 text-white"
+                          : "bg-neutral-500/90 text-white"
+                      }`}
                     >
-                      <td className="px-6 py-4 text-sm font-medium text-white">
-                        {guitar.sku}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-white">
-                        {guitar.name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-neutral-400">
-                        {guitar.series}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                            guitar.status === "ACTIVE"
-                              ? "bg-green-500/20 text-green-400"
-                              : "bg-neutral-500/20 text-neutral-400"
-                          }`}
-                        >
-                          {guitar.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/admin/guitars/${guitar.id}/preview`}
-                            className="rounded-lg border border-white/10 p-2 text-neutral-400 transition hover:border-white/20 hover:text-white"
-                            title="Preview"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </Link>
-                          <Link
-                            href={`/admin/guitars/${guitar.id}/edit`}
-                            className="rounded-lg border border-white/10 p-2 text-neutral-400 transition hover:border-white/20 hover:text-white"
-                            title="Edit"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(guitar.id)}
-                            disabled={deleting === guitar.id}
-                            className="rounded-lg border border-red-500/20 p-2 text-red-400 transition hover:border-red-500/40 hover:bg-red-500/10 disabled:opacity-50"
-                            title="Delete"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      {guitar.status}
+                    </span>
+                  </div>
+
+                  {/* Action Buttons Overlay */}
+                  <div className="absolute top-3 right-3 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Link
+                      href={`/admin/guitars/${guitar.id}/preview`}
+                      className="rounded-lg border border-white/20 bg-black/50 p-2 text-white backdrop-blur-sm transition hover:bg-black/70"
+                      title="Preview"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <EyeIcon className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      href={`/admin/guitars/${guitar.id}/edit`}
+                      className="rounded-lg border border-white/20 bg-black/50 p-2 text-white backdrop-blur-sm transition hover:bg-black/70"
+                      title="Edit"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                    </Link>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(guitar.id);
+                      }}
+                      disabled={deleting === guitar.id}
+                      className="rounded-lg border border-red-500/50 bg-red-500/50 p-2 text-white backdrop-blur-sm transition hover:bg-red-500/70 disabled:opacity-50"
+                      title="Delete"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Guitar Info */}
+                <div className="p-4">
+                  <div className="mb-1">
+                    <h3 className="font-semibold text-white group-hover:text-accent transition-colors">
+                      {guitar.name}
+                    </h3>
+                    <p className="mt-1 text-xs text-neutral-400">{guitar.series}</p>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3">
+                    <p className="text-xs font-mono text-neutral-500">{guitar.sku}</p>
+                    <Link
+                      href={`/admin/guitars/${guitar.id}/edit`}
+                      className="text-xs text-accent hover:text-accent-soft"
+                    >
+                      Edit →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>
