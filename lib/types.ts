@@ -213,7 +213,15 @@ export interface AdminSettingsDoc {
   notifications: AdminNotificationSettings;
   emailTemplates?: AdminEmailTemplateSettings | null;
   staffNotes?: string;
+  termsTemplate?: string;
   updatedAt: string;
 }
+
+export interface FxRatesDoc {
+  base: string;
+  asOf: string;
+  rates: Record<string, number>;
+}
+
 
 

@@ -41,6 +41,7 @@ export default function AdminSettingsPage() {
   const [emailTemplates, setEmailTemplates] =
     useState<AdminEmailTemplateSettings | null>(null);
   const [staffNotes, setStaffNotes] = useState<string>("");
+  const [termsTemplate, setTermsTemplate] = useState<string>("");
 
   useEffect(() => {
     async function loadSettings() {
@@ -56,6 +57,7 @@ export default function AdminSettingsPage() {
           setSmtp(data.smtp ?? null);
           setEmailTemplates(data.emailTemplates ?? null);
           setStaffNotes(data.staffNotes ?? "");
+          setTermsTemplate(data.termsTemplate ?? "");
         } else {
           // No settings yet; use defaults
           setBranding(DEFAULT_BRANDING);
@@ -88,6 +90,7 @@ export default function AdminSettingsPage() {
         smtp: smtp ?? null,
         emailTemplates: emailTemplates ?? null,
         staffNotes: staffNotes || "",
+        termsTemplate: termsTemplate || "",
         updatedAt: new Date().toISOString(),
       };
 
@@ -299,6 +302,28 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setStaffNotes(e.target.value)}
                   placeholder="e.g. For VIP dealers contact Perry directly…"
                 />
+              </div>
+
+              {/* Terms & conditions template */}
+              <div className="glass-strong rounded-3xl p-6 shadow-xl">
+                <h2 className="text-lg font-semibold text-white">
+                  Purchase order terms template
+                </h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Paste your latest terms & conditions here so you can reuse them in
+                  emails, documents, or the dealer portal. This is for reference only and
+                  does not automatically create a legal agreement.
+                </p>
+                <textarea
+                  className="mt-4 min-h-[200px] w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                  value={termsTemplate}
+                  onChange={(e) => setTermsTemplate(e.target.value)}
+                  placeholder="Paste your Terms & Conditions text or Markdown here…"
+                />
+                <p className="mt-2 text-xs text-neutral-500">
+                  Tip: keep the canonical version here, then copy–paste into contracts,
+                  invoices, or PDF documents as needed.
+                </p>
               </div>
             </div>
 

@@ -11,6 +11,7 @@ import {
   PricesDoc,
   AvailabilityState,
   GuitarOption,
+  FxRatesDoc,
 } from "@/lib/types";
 import { computeEffectivePrice } from "@/lib/pricing";
 import { TierDoc } from "@/lib/types";
@@ -46,6 +47,7 @@ export default function GuitarDetailPage({
   const [quantity, setQuantity] = useState<number>(1);
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(false);
+  const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
 
   // Fetch guitar data
   useEffect(() => {
@@ -63,12 +65,14 @@ export default function GuitarDetailPage({
       setFetching(true);
       setError(null);
       try {
-        const [guitarSnap, availabilitySnap, pricesSnap, tiersSnap] = await Promise.all([
-          getDoc(doc(db, "guitars", guitarId)),
-          getDoc(doc(db, "availability", guitarId)),
-          getDoc(doc(db, "prices", guitarId)),
-          getDocs(collection(db, "tiers")),
-        ]);
+        const [guitarSnap, availabilitySnap, pricesSnap, tiersSnap, fxSnap] =
+          await Promise.all([
+            getDoc(doc(db, "guitars", guitarId)),
+            getDoc(doc(db, "availability", guitarId)),
+            getDoc(doc(db, "prices", guitarId)),
+            getDocs(collection(db, "tiers")),
+            getDoc(doc(db, "fxRates", "latest")),
+          ]);
 
         if (!guitarSnap.exists()) {
           setError("Guitar not found");
@@ -89,9 +93,11 @@ export default function GuitarDetailPage({
                 qtyAllocated: 0,
               },
         );
-        setPrices(
-          pricesSnap.exists() ? (pricesSnap.data() as PricesDoc) : null,
-        );
+        setPrices(pricesSnap.exists() ? (pricesSnap.data() as PricesDoc) : null);
+
+        if (fxSnap.exists()) {
+          setFxRates(fxSnap.data() as FxRatesDoc);
+        }
 
         const tiersData = tiersSnap.docs.map((doc) => ({
           id: doc.id,
@@ -244,6 +250,17 @@ export default function GuitarDetailPage({
       [optionId]: valueId,
     }));
   };
+
+  const approximateLocalUnit = useMemo(() => {
+    const base = calculateFinalPrice() || effectivePrice.price;
+    if (!base || !fxRates || !user?.currency) return null;
+    const rate =
+      user.currency === fxRates.base
+        ? 1
+        : fxRates.rates[user.currency] ?? null;
+    if (!rate) return null;
+    return base * rate;
+  }, [calculateFinalPrice, effectivePrice.price, fxRates, user?.currency]);
 
   const validateOptions = () => {
     if (!guitar.options) return true;

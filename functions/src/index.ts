@@ -14,6 +14,12 @@ interface AdminSmtpSettings {
   useTls: boolean;
 }
 
+interface FxRatesDoc {
+  base: string;
+  asOf: string;
+  rates: Record<string, number>;
+}
+
 async function getSmtpSettings(): Promise<AdminSmtpSettings> {
   const docRef = db.collection("adminSettings").doc("global");
   const snap = await docRef.get();
@@ -242,5 +248,72 @@ export const sendDealerEmail = functions.https.onCall(
     }
   },
 );
+
+export const refreshFxRates = functions.https.onCall(
+  async (_data: unknown, context: functions.https.CallableContext) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated to refresh FX rates.",
+        );
+      }
+
+      const role = context.auth.token.role as string | undefined;
+      if (role !== "ADMIN") {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only admin users can refresh FX rates.",
+        );
+      }
+
+      const appId = functions.config().oer?.app_id as string | undefined;
+      if (!appId) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "OpenExchangeRates app_id is not configured. Set functions config oer.app_id.",
+        );
+      }
+
+      const response = await fetch(
+        `https://openexchangerates.org/api/latest.json?app_id=${appId}`,
+      );
+
+      if (!response.ok) {
+        console.error("OpenExchangeRates error:", response.status, response.statusText);
+        throw new functions.https.HttpsError(
+          "internal",
+          "Failed to fetch FX rates from OpenExchangeRates.",
+        );
+      }
+
+      const json = (await response.json()) as {
+        base: string;
+        rates: Record<string, number>;
+        timestamp: number;
+      };
+
+      const fxDoc: FxRatesDoc = {
+        base: json.base,
+        asOf: new Date(json.timestamp * 1000).toISOString(),
+        rates: json.rates,
+      };
+
+      await db.collection("fxRates").doc("latest").set(fxDoc, { merge: true });
+
+      return { success: true, asOf: fxDoc.asOf, base: fxDoc.base };
+    } catch (error: any) {
+      console.error("Error in refreshFxRates:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to refresh FX rates.",
+      );
+    }
+  },
+);
+
 
 

@@ -32,6 +32,7 @@ export default function CheckoutPage() {
   const [account, setAccount] = useState<AccountDoc | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [editingShipping, setEditingShipping] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Fetch account information to pre-fill company name
   useEffect(() => {
@@ -106,6 +107,14 @@ export default function CheckoutPage() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+
+    if (!agreedToTerms) {
+      setError(
+        "Please confirm that you have read and agree to the purchase order Terms & Conditions.",
+      );
+      setSubmitting(false);
+      return;
+    }
 
     // Ensure user is authenticated
     if (!user) {
@@ -358,11 +367,28 @@ export default function CheckoutPage() {
             <div className="mt-4 space-y-2 rounded-lg border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-semibold text-white">Terms & Conditions</p>
               <p className="text-xs text-neutral-400">
-                A deposit of $200 per guitar is required. Invoice will be sent separately from Ormsby Guitars.
+                This purchase order is an expression of intent only and does not secure or
+                reserve stock until required deposits and final payment have been received
+                in full by Ormsby Guitars Pty Ltd.
               </p>
               <p className="mt-2 text-xs text-neutral-500">
-                Final pricing, shipping, and taxes will be confirmed by Ormsby on your order confirmation.
+                A deposit of $200 per guitar is required and will be invoiced separately.
+                Final pricing, shipping, taxes and timelines will be confirmed by Ormsby
+                on your order confirmation.
               </p>
+              <label className="mt-3 flex items-start gap-2 text-xs text-neutral-300">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                />
+                <span>
+                  I have read and agree to Ormsby Guitars’ dealer/distributor purchase
+                  order Terms &amp; Conditions, including the cancellation, payment and
+                  quality control policies.
+                </span>
+              </label>
             </div>
 
             <div className="space-y-4 border-t border-white/10 pt-4">

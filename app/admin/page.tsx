@@ -210,20 +210,33 @@ export default function AdminDashboard() {
   return (
     <main className="flex flex-1 flex-col gap-8">
       {/* Header */}
-      <header>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
-            Admin Dashboard
+      <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-neutral-500">
+            Overview
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+            Admin dashboard
+          </h1>
+          <p className="mt-2 text-sm text-neutral-400 sm:text-base">
+            Quiet, at-a-glance view of guitars, orders, and dealer activity.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-neutral-500">
+          <span className="rounded-full border border-white/10 px-3 py-1">
+            {stats.totalGuitars} guitars · {stats.totalOrders} orders
           </span>
-        </h1>
-        <p className="mt-3 text-base text-neutral-400 sm:text-lg">
-          Manage guitars, orders, pricing, and accounts
-        </p>
+          <span className="hidden rounded-full border border-white/10 px-3 py-1 md:inline-flex">
+            {stats.pendingOrders} pending orders · {stats.pendingRequests} requests
+          </span>
+        </div>
       </header>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="glass-strong rounded-3xl p-6 shadow-xl">
+      {/* Stats + Quick actions */}
+      <section className="grid gap-6 lg:grid-cols-3">
+        {/* Stats grid */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
+          <div className="rounded-3xl border border-white/5 bg-white/5/50 p-5">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
               Total Guitars
@@ -234,104 +247,124 @@ export default function AdminDashboard() {
           <p className="mt-1 text-xs text-neutral-400">
             {stats.activeGuitars} active
           </p>
+          </div>
+
+          <div className="rounded-3xl border border-white/5 bg-white/5/50 p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Total Orders
+              </p>
+              <DocumentTextIcon className="h-5 w-5 text-neutral-400" />
+            </div>
+            <p className="text-3xl font-semibold text-white">
+              {stats.totalOrders}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">
+              {stats.pendingOrders} pending
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-white/5 bg-white/5/50 p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Accounts
+              </p>
+              <UserGroupIcon className="h-5 w-5 text-neutral-400" />
+            </div>
+            <p className="text-3xl font-semibold text-white">
+              {stats.totalAccounts}
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-white/5 bg-white/5/50 p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Pending Orders
+              </p>
+              <ClockIcon className="h-5 w-5 text-accent" />
+            </div>
+            <p className="text-3xl font-semibold text-accent">
+              {stats.pendingOrders}
+            </p>
+          </div>
+
+          <Link
+            href="/admin/accounts?tab=requests"
+            className="rounded-3xl border border-white/5 bg-white/5/50 p-5 transition-colors hover:border-yellow-400/60"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Account Requests
+              </p>
+              <UserGroupIcon className="h-5 w-5 text-yellow-400" />
+            </div>
+            <p className="text-3xl font-semibold text-yellow-400">
+              {stats.pendingRequests}
+            </p>
+            {stats.pendingRequests > 0 && (
+              <p className="mt-1 text-xs text-yellow-400">
+                Tap to review and approve
+              </p>
+            )}
+          </Link>
+
+          <div className="rounded-3xl border border-white/5 bg-white/5/50 p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                Active Models
+              </p>
+              <CheckCircleIcon className="h-5 w-5 text-green-400" />
+            </div>
+            <p className="text-3xl font-semibold text-green-400">
+              {stats.activeGuitars}
+            </p>
+          </div>
         </div>
 
-        <div className="glass-strong rounded-3xl p-6 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Total Orders
-            </p>
-            <DocumentTextIcon className="h-5 w-5 text-neutral-400" />
+        {/* Quick Actions */}
+        <aside className="rounded-3xl border border-white/5 bg-white/5/40 p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            Quick actions
+          </h2>
+          <div className="mt-4 space-y-2">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className="group flex items-center justify-between rounded-2xl px-3 py-2 text-sm text-neutral-200 transition-colors hover:bg-white/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-white/5 text-accent">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{action.title}</span>
+                      <span className="text-[11px] text-neutral-500">
+                        {action.description}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-neutral-500 group-hover:text-neutral-300">
+                    →
+                  </span>
+                </Link>
+              );
+            })}
           </div>
-          <p className="text-3xl font-bold text-white">{stats.totalOrders}</p>
-          <p className="mt-1 text-xs text-neutral-400">
-            {stats.pendingOrders} pending
-          </p>
-        </div>
-
-        <div className="glass-strong rounded-3xl p-6 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Accounts
-            </p>
-            <UserGroupIcon className="h-5 w-5 text-neutral-400" />
-          </div>
-          <p className="text-3xl font-bold text-white">{stats.totalAccounts}</p>
-        </div>
-
-        <div className="glass-strong rounded-3xl p-6 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Pending Orders
-            </p>
-            <ClockIcon className="h-5 w-5 text-accent" />
-          </div>
-          <p className="text-3xl font-bold text-accent">{stats.pendingOrders}</p>
-        </div>
-        
-        <Link
-          href="/admin/accounts?tab=requests"
-          className="glass-strong rounded-3xl p-6 shadow-xl transition-all hover:scale-105"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Account Requests
-            </p>
-            <UserGroupIcon className="h-5 w-5 text-yellow-400" />
-          </div>
-          <p className="text-3xl font-bold text-yellow-400">{stats.pendingRequests}</p>
-          {stats.pendingRequests > 0 && (
-            <p className="mt-1 text-xs text-yellow-400">Needs approval</p>
-          )}
-        </Link>
-
-        <div className="glass-strong rounded-3xl p-6 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Active
-            </p>
-            <CheckCircleIcon className="h-5 w-5 text-green-400" />
-          </div>
-          <p className="text-3xl font-bold text-green-400">{stats.activeGuitars}</p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div>
-        <h2 className="mb-6 text-2xl font-semibold tracking-tight">
-          Quick Actions
-        </h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {quickActions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <Link
-                key={action.href}
-                href={action.href}
-                className="group glass-strong rounded-3xl p-6 shadow-xl transition-all duration-300 hover:scale-105 hover:shadow-2xl"
-              >
-                <div className="mb-4 inline-flex rounded-2xl bg-accent/10 p-3 text-accent">
-                  <Icon className="h-6 w-6" />
-                </div>
-                <h3 className="mb-2 text-lg font-semibold text-white">
-                  {action.title}
-                </h3>
-                <p className="text-sm text-neutral-400">{action.description}</p>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+        </aside>
+      </section>
 
       {/* Inventory Overview */}
-      <div>
+      <section className="rounded-3xl border border-white/5 bg-white/5/30 p-5">
         <h2 className="mb-4 text-2xl font-semibold tracking-tight">
           Inventory Overview
         </h2>
         <p className="mb-4 text-sm text-neutral-400">
           Tally of guitars ordered across all dealer purchase orders.
         </p>
-        <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/5">
+        <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/40">
           <table className="w-full text-sm">
             <thead className="border-b border-white/10 bg-white/5 text-xs uppercase tracking-wider text-neutral-400">
               <tr>
@@ -382,7 +415,7 @@ export default function AdminDashboard() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </main>
   );
 }
