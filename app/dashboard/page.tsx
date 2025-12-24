@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OrderDoc, AccountDoc } from "@/lib/types";
 import { StatsCard } from "@/components/dashboard/StatsCard";
@@ -55,10 +55,20 @@ export default function DashboardPage() {
           limit(10),
         );
         const ordersSnap = await getDocs(ordersQuery);
-        const ordersData = ordersSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Array<OrderDoc & { id: string }>;
+        const ordersData = ordersSnap.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Convert Firestore Timestamps to ISO strings
+            createdAt: data.createdAt instanceof Timestamp
+              ? data.createdAt.toDate().toISOString()
+              : data.createdAt,
+            updatedAt: data.updatedAt instanceof Timestamp
+              ? data.updatedAt.toDate().toISOString()
+              : data.updatedAt,
+          };
+        }) as Array<OrderDoc & { id: string }>;
         setOrders(ordersData);
 
         // Fetch account info
@@ -109,7 +119,7 @@ export default function DashboardPage() {
   return (
     <main className="flex flex-1 flex-col gap-8">
       {/* Welcome Header - Modern 2025 */}
-      <header className="animate-fade-in">
+      <header className="animate-fade-in mb-[10px]">
         <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
           <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
             Welcome back
@@ -185,6 +195,7 @@ export default function DashboardPage() {
               orders={orders}
               currency={user.currency!}
               isLoading={fetching}
+              accountName={account?.name}
             />
           </div>
         </div>

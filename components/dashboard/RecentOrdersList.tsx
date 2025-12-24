@@ -25,9 +25,10 @@ interface Props {
   orders: Array<OrderDoc & { id: string }>;
   currency: string;
   isLoading?: boolean;
+  accountName?: string;
 }
 
-export function RecentOrdersList({ orders, currency, isLoading }: Props) {
+export function RecentOrdersList({ orders, currency, isLoading, accountName }: Props) {
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -77,12 +78,19 @@ export function RecentOrdersList({ orders, currency, isLoading }: Props) {
                   {STATUS_LABELS[order.status] || order.status}
                 </span>
               </div>
+              {accountName && (
+                <p className="mt-1 text-xs text-neutral-500">
+                  {accountName}
+                </p>
+              )}
               <p className="mt-1 text-xs text-neutral-400">
-                {new Date(order.createdAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {order.createdAt
+                  ? new Date(order.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : "Unknown date"}
               </p>
             </div>
             <div className="text-right">
