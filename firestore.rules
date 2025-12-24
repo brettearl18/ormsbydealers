@@ -75,6 +75,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // FX Rates collection: authenticated users can read (for currency conversion estimates)
+    match /fxRates/{rateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Admin Settings: authenticated users can read branding (for logo display), only admins can write
+    match /adminSettings/{settingsId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
     // Orders collection: users can read/write orders for their account
     match /orders/{orderId} {
       allow read: if isAuthenticated() && 

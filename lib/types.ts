@@ -160,6 +160,10 @@ export interface OrderDoc {
   shippingAddress: ShippingAddress;
   poNumber?: string;
   notes?: string;
+  termsAccepted?: {
+    accepted: boolean;
+    acceptedAt: string;
+  };
   createdAt: string;
   updatedAt: string;
   invoiceUrl?: string;

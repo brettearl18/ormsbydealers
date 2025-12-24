@@ -84,11 +84,22 @@ export function OrderReviewItem({ item, index }: Props) {
                   Configuration
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {Object.entries(item.selectedOptions).map(
-                    ([optionId, valueId]) => (
+                  {Object.entries(item.selectedOptions)
+                    .sort(([optionIdA], [optionIdB]) => {
+                      // Prioritize Colour/Color first
+                      const isColorA = optionIdA.toLowerCase().includes("color") || optionIdA.toLowerCase().includes("colour");
+                      const isColorB = optionIdB.toLowerCase().includes("color") || optionIdB.toLowerCase().includes("colour");
+                      if (isColorA && !isColorB) return -1;
+                      if (!isColorA && isColorB) return 1;
+                      // Then sort alphabetically by option name
+                      const nameA = getOptionName(optionIdA).toLowerCase();
+                      const nameB = getOptionName(optionIdB).toLowerCase();
+                      return nameA.localeCompare(nameB);
+                    })
+                    .map(([optionId, valueId]) => (
                       <div
                         key={optionId}
-                        className="flex items-center justify-between text-xs"
+                        className="flex items-center gap-2 text-xs"
                       >
                         <span className="text-neutral-400">
                           {getOptionName(optionId)}:
@@ -97,8 +108,7 @@ export function OrderReviewItem({ item, index }: Props) {
                           {getOptionLabel(optionId, valueId)}
                         </span>
                       </div>
-                    ),
-                  )}
+                    ))}
                 </div>
               </div>
             )}

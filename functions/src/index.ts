@@ -60,6 +60,10 @@ interface SubmitOrderRequest {
   };
   poNumber?: string;
   notes?: string;
+  termsAccepted?: {
+    accepted: boolean;
+    acceptedAt: string;
+  };
 }
 
 export const submitOrder = functions.https.onCall(async (data: SubmitOrderRequest, context: functions.https.CallableContext) => {
@@ -73,7 +77,7 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     }
 
     const uid = context.auth.uid;
-    const { cartItems, shippingAddress, poNumber, notes } =
+    const { cartItems, shippingAddress, poNumber, notes, termsAccepted } =
       data as SubmitOrderRequest;
 
   // Validate input
@@ -125,6 +129,7 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     shippingAddress,
     poNumber: poNumber || null,
     notes: notes || null,
+    termsAccepted: termsAccepted || null,
     createdAt: now,
     updatedAt: now,
   };

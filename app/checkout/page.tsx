@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useEffect } from "react";
+import { FormEvent, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
@@ -8,10 +8,10 @@ import { httpsCallable } from "firebase/functions";
 import { functions, db, auth } from "@/lib/firebase";
 import { getIdToken } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { AccountDoc } from "@/lib/types";
+import { AccountDoc, AdminSettingsDoc } from "@/lib/types";
 import Link from "next/link";
 import { OrderReviewItem } from "@/components/checkout/OrderReviewItem";
-import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
@@ -31,8 +31,15 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountDoc | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(true);
-  const [editingShipping, setEditingShipping] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [warningMessage, setWarningMessage] = useState<string>("");
+  const [termsTemplate, setTermsTemplate] = useState<string>("");
+  const [loadingTerms, setLoadingTerms] = useState(false);
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
+  const termsScrollRef = useRef<HTMLDivElement>(null);
 
   // Fetch account information to pre-fill company name
   useEffect(() => {
@@ -65,6 +72,49 @@ export default function CheckoutPage() {
       setLoadingAccount(false);
     }
   }, [user, authLoading]);
+
+  // Fetch terms template from admin settings
+  useEffect(() => {
+    async function fetchTerms() {
+      setLoadingTerms(true);
+      try {
+        const settingsRef = doc(db, "adminSettings", "global");
+        const settingsSnap = await getDoc(settingsRef);
+        if (settingsSnap.exists()) {
+          const settingsData = settingsSnap.data() as AdminSettingsDoc;
+          setTermsTemplate(settingsData.termsTemplate || "");
+        }
+      } catch (err) {
+        console.error("Error fetching terms template:", err);
+      } finally {
+        setLoadingTerms(false);
+      }
+    }
+
+    if (!authLoading) {
+      fetchTerms();
+    }
+  }, [authLoading]);
+
+  // Check if content is short enough that no scrolling is needed
+  useEffect(() => {
+    if (showTermsModal && termsScrollRef.current && !loadingTerms) {
+      const checkScroll = () => {
+        if (termsScrollRef.current) {
+          const isShortContent =
+            termsScrollRef.current.scrollHeight <=
+            termsScrollRef.current.clientHeight;
+          if (isShortContent) {
+            setHasScrolledToBottom(true);
+          }
+        }
+      };
+      // Check immediately and after a short delay to account for rendering
+      checkScroll();
+      const timeout = setTimeout(checkScroll, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [showTermsModal, loadingTerms, termsTemplate]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -108,10 +158,27 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setError(null);
 
-    if (!agreedToTerms) {
-      setError(
-        "Please confirm that you have read and agree to the purchase order Terms & Conditions.",
+    if (!termsAccepted) {
+      setWarningMessage(
+        "You must view and accept the Terms & Conditions before submitting your order. Please click the 'View & Accept Terms & Conditions' button above.",
       );
+      setShowWarningModal(true);
+      setSubmitting(false);
+      // Scroll to terms section
+      setTimeout(() => {
+        const termsSection = document.getElementById("terms-section");
+        if (termsSection) {
+          termsSection.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 100);
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setWarningMessage(
+        "Please check the agreement checkbox to confirm you have read and agree to the Terms & Conditions.",
+      );
+      setShowWarningModal(true);
       setSubmitting(false);
       return;
     }
@@ -158,6 +225,10 @@ export default function CheckoutPage() {
         },
         poNumber: poNumber || undefined,
         notes: notes || undefined,
+        termsAccepted: termsAccepted ? {
+          accepted: true,
+          acceptedAt: new Date().toISOString(),
+        } : undefined,
       });
 
       const orderId = (result.data as any)?.orderId;
@@ -213,57 +284,10 @@ export default function CheckoutPage() {
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
                 Delivery Details
               </h2>
-              {!editingShipping && (
-                <button
-                  type="button"
-                  onClick={() => setEditingShipping(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:border-white/20 hover:bg-white/10"
-                >
-                  <PencilIcon className="h-3 w-3" />
-                  Edit
-                </button>
-              )}
             </div>
 
-            {!editingShipping ? (
-              /* Read-only view */
-              <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-4">
-                {company && (
-                  <div>
-                    <p className="text-xs text-neutral-400">Company</p>
-                    <p className="text-sm font-medium text-white">{company}</p>
-                  </div>
-                )}
-                {line1 && (
-                  <div>
-                    <p className="text-xs text-neutral-400">Address</p>
-                    <p className="text-sm font-medium text-white">{line1}</p>
-                    {line2 && (
-                      <p className="text-sm font-medium text-white">{line2}</p>
-                    )}
-                  </div>
-                )}
-                {(city || region || postalCode) && (
-                  <div>
-                    <p className="text-xs text-neutral-400">City, State, Postal</p>
-                    <p className="text-sm font-medium text-white">
-                      {[city, region, postalCode].filter(Boolean).join(", ")}
-                    </p>
-                  </div>
-                )}
-                {country && (
-                  <div>
-                    <p className="text-xs text-neutral-400">Country</p>
-                    <p className="text-sm font-medium text-white">{country}</p>
-                  </div>
-                )}
-                {!company && !line1 && (
-                  <p className="text-xs text-neutral-500">No delivery details set</p>
-                )}
-              </div>
-            ) : (
-              /* Editable form */
-              <div className="space-y-4">
+            {/* Editable form - always visible */}
+            <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-xs text-neutral-400">
                     Company name
@@ -352,41 +376,57 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setEditingShipping(false)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-accent/50 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition hover:border-accent hover:bg-accent/20"
-                >
-                  <CheckIcon className="h-4 w-4" />
-                  Save Details
-                </button>
-              </div>
-            )}
+            </div>
 
             {/* Terms and Conditions */}
-            <div className="mt-4 space-y-2 rounded-lg border border-white/10 bg-black/20 p-4">
+            <div id="terms-section" className="mt-4 space-y-3 rounded-lg border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-semibold text-white">Terms & Conditions</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTermsModal(true);
+                  setHasScrolledToBottom(false); // Reset scroll state when opening modal
+                }}
+                className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  termsAccepted
+                    ? "bg-accent/20 text-accent hover:bg-accent/30"
+                    : "bg-accent text-black hover:bg-accent-soft"
+                }`}
+              >
+                {termsAccepted ? "View Terms & Conditions" : "View & Accept Terms & Conditions *"}
+              </button>
+              {!termsAccepted && (
+                <p className="text-xs text-amber-400">
+                  * You must view and accept the Terms & Conditions to proceed with your order.
+                </p>
+              )}
               <p className="text-xs text-neutral-400">
                 This purchase order is an expression of intent only and does not secure or
                 reserve stock until required deposits and final payment have been received
                 in full by Ormsby Guitars Pty Ltd.
               </p>
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="text-xs text-neutral-500">
                 A deposit of $200 per guitar is required and will be invoiced separately.
                 Final pricing, shipping, taxes and timelines will be confirmed by Ormsby
                 on your order confirmation.
               </p>
-              <label className="mt-3 flex items-start gap-2 text-xs text-neutral-300">
+              <label className={`flex items-start gap-2 text-xs ${
+                !termsAccepted ? "text-neutral-500" : "text-neutral-300"
+              }`}>
                 <input
                   type="checkbox"
-                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60"
+                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-50"
                   checked={agreedToTerms}
                   onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  disabled={!termsAccepted}
                 />
                 <span>
-                  I have read and agree to Ormsby Guitars’ dealer/distributor purchase
+                  I have read and agree to Ormsby Guitars' dealer/distributor purchase
                   order Terms &amp; Conditions, including the cancellation, payment and
                   quality control policies.
+                  {termsAccepted && agreedToTerms && (
+                    <span className="ml-1 text-green-400">✓ Accepted</span>
+                  )}
                 </span>
               </label>
             </div>
@@ -422,13 +462,6 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                <p className="text-xs text-red-400" role="alert">
-                  {error}
-                </p>
-              </div>
-            )}
           </form>
         </div>
 
@@ -502,13 +535,49 @@ export default function CheckoutPage() {
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
+                  
+                  // Check terms acceptance first
+                  if (!termsAccepted) {
+                    setWarningMessage(
+                      "You must view and accept the Terms & Conditions before submitting your order. Please click the 'View & Accept Terms & Conditions' button above.",
+                    );
+                    setShowWarningModal(true);
+                    // Scroll to terms section
+                    setTimeout(() => {
+                      const termsSection = document.getElementById("terms-section");
+                      if (termsSection) {
+                        termsSection.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }, 100);
+                    return;
+                  }
+                  
+                  if (!agreedToTerms) {
+                    setWarningMessage(
+                      "Please check the agreement checkbox to confirm you have read and agree to the Terms & Conditions.",
+                    );
+                    setShowWarningModal(true);
+                    return;
+                  }
+                  
                   const form = document.getElementById('checkout-form') as HTMLFormElement;
                   if (form) {
                     form.requestSubmit();
                   }
                 }}
                 disabled={submitting}
-                className="inline-flex w-full items-center justify-center rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black shadow-lg transition-all hover:scale-[1.02] hover:bg-accent-soft hover:shadow-xl hover:shadow-accent/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold shadow-lg transition-all ${
+                  !termsAccepted || !agreedToTerms
+                    ? "bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                    : "bg-accent text-black hover:scale-[1.02] hover:bg-accent-soft hover:shadow-xl hover:shadow-accent/30"
+                } disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100`}
+                title={
+                  !termsAccepted
+                    ? "You must view and accept the Terms & Conditions first"
+                    : !agreedToTerms
+                    ? "Please check the agreement checkbox"
+                    : undefined
+                }
               >
                 {submitting ? (
                   <>
@@ -537,10 +606,158 @@ export default function CheckoutPage() {
                   "Submit Purchase Order"
                 )}
               </button>
+              {error && (
+                <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                  <p className="text-xs text-red-400" role="alert">
+                    {error}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Terms & Conditions Modal */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="glass-strong relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl shadow-2xl">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-white/10 px-6 py-4">
+              <h2 className="text-xl font-semibold text-white">
+                Terms & Conditions
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  // Only allow closing if terms have been accepted
+                  if (termsAccepted) {
+                    setShowTermsModal(false);
+                  }
+                }}
+                className={`rounded-lg p-2 transition ${
+                  termsAccepted
+                    ? "text-neutral-400 hover:bg-white/10 hover:text-white"
+                    : "cursor-not-allowed text-neutral-600 opacity-50"
+                }`}
+                disabled={!termsAccepted}
+                title={termsAccepted ? "Close" : "You must accept the terms to proceed"}
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div
+              ref={termsScrollRef}
+              className="flex-1 overflow-y-auto px-6 py-4"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                const isAtBottom =
+                  target.scrollHeight - target.scrollTop <= target.clientHeight + 10; // 10px threshold
+                setHasScrolledToBottom(isAtBottom);
+              }}
+            >
+              {loadingTerms ? (
+                <p className="text-sm text-neutral-400">Loading terms...</p>
+              ) : termsTemplate ? (
+                <div className="prose prose-invert max-w-none text-sm text-neutral-300">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                    {termsTemplate}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-400">
+                  Terms & Conditions are not currently available. Please contact support
+                  for details.
+                </p>
+              )}
+            </div>
+            <div className="flex-shrink-0 border-t border-white/10 px-6 py-4">
+              {!hasScrolledToBottom && (
+                <p className="mb-3 text-center text-xs text-amber-400">
+                  Please scroll to the bottom of the terms to continue
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasScrolledToBottom) {
+                    setTermsAccepted(true);
+                    setAgreedToTerms(true);
+                    setShowTermsModal(false);
+                    setHasScrolledToBottom(false); // Reset for next time
+                  }
+                }}
+                disabled={!hasScrolledToBottom}
+                className={`w-full rounded-xl px-4 py-2 text-sm font-medium transition ${
+                  hasScrolledToBottom
+                    ? "bg-accent text-black hover:bg-accent-soft cursor-pointer"
+                    : "bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                }`}
+              >
+                Accept Terms & Conditions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warning Modal */}
+      {showWarningModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="glass-strong relative flex max-w-md flex-col overflow-hidden rounded-3xl shadow-2xl">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-white/10 px-6 py-4">
+              <h2 className="text-xl font-semibold text-white">
+                Action Required
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowWarningModal(false)}
+                className="rounded-lg p-2 text-neutral-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-6 w-6 text-amber-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                </div>
+                <p className="flex-1 text-sm text-neutral-300">
+                  {warningMessage}
+                </p>
+              </div>
+            </div>
+            <div className="flex-shrink-0 border-t border-white/10 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWarningModal(false);
+                  // If warning is about terms, open terms modal
+                  if (warningMessage.includes("View & Accept Terms & Conditions")) {
+                    setShowTermsModal(true);
+                  }
+                }}
+                className="w-full rounded-xl bg-accent px-4 py-2 text-sm font-medium text-black transition hover:bg-accent-soft"
+              >
+                {warningMessage.includes("View & Accept Terms & Conditions")
+                  ? "View Terms & Conditions"
+                  : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -10,8 +10,10 @@ import {
   AdminEmailTemplateSettings,
 } from "@/lib/types";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { CheckCircleIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
+import { db, functions, auth } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
+import { getIdToken } from "firebase/auth";
+import { CheckCircleIcon, Cog6ToothIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 
 const DEFAULT_BRANDING: AdminBrandingSettings = {
   siteName: "Ormsby Dealer Portal",
@@ -41,6 +43,8 @@ export default function AdminSettingsPage() {
   const [emailTemplates, setEmailTemplates] =
     useState<AdminEmailTemplateSettings | null>(null);
   const [staffNotes, setStaffNotes] = useState<string>("");
+  const [refreshingFxRates, setRefreshingFxRates] = useState(false);
+  const [fxRatesStatus, setFxRatesStatus] = useState<string | null>(null);
   const [termsTemplate, setTermsTemplate] = useState<string>("");
 
   useEffect(() => {
@@ -532,6 +536,60 @@ export default function AdminSettingsPage() {
                       </span>
                     </span>
                   </label>
+                </div>
+              </div>
+
+              {/* FX Rates */}
+              <div className="glass-strong rounded-3xl p-6 shadow-xl">
+                <h2 className="text-lg font-semibold text-white">Exchange Rates</h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Refresh currency exchange rates from OpenExchangeRates for dealer price estimates.
+                </p>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setRefreshingFxRates(true);
+                      setFxRatesStatus(null);
+                      try {
+                        const currentUser = auth.currentUser;
+                        if (!currentUser) {
+                          setFxRatesStatus("Error: Not authenticated");
+                          return;
+                        }
+                        await getIdToken(currentUser, true);
+                        const refreshFxRatesFn = httpsCallable(functions, "refreshFxRates");
+                        const result = await refreshFxRatesFn({});
+                        const data = result.data as { success: boolean; asOf: string; base: string };
+                        setFxRatesStatus(
+                          `Successfully updated rates (base: ${data.base}, as of ${new Date(data.asOf).toLocaleString()})`
+                        );
+                      } catch (err: any) {
+                        console.error("Error refreshing FX rates:", err);
+                        setFxRatesStatus(err.message || "Failed to refresh FX rates");
+                      } finally {
+                        setRefreshingFxRates(false);
+                      }
+                    }}
+                    disabled={refreshingFxRates}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ArrowPathIcon
+                      className={`h-4 w-4 ${refreshingFxRates ? "animate-spin" : ""}`}
+                    />
+                    {refreshingFxRates ? "Refreshing..." : "Refresh FX Rates"}
+                  </button>
+                  {fxRatesStatus && (
+                    <p
+                      className={`mt-2 text-xs ${
+                        fxRatesStatus.startsWith("Successfully")
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {fxRatesStatus}
+                    </p>
+                  )}
                 </div>
               </div>
 

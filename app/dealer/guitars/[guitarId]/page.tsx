@@ -48,6 +48,10 @@ export default function GuitarDetailPage({
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(false);
   const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
+  const [selectedDisplayCurrency, setSelectedDisplayCurrency] = useState<string>("");
+
+  // Allowed currencies for the FX selector
+  const ALLOWED_CURRENCIES = ["AUD", "CAD", "GBP", "USD", "EUR"];
 
   // Fetch guitar data
   useEffect(() => {
@@ -131,13 +135,44 @@ export default function GuitarDetailPage({
     });
   }, [prices, user?.accountId, user?.tierId, quantity, tiers]);
 
-  // Update display images when options change - combine base images with option images
+  // Update display images when options change - prioritize option-specific images
   useEffect(() => {
     if (!guitar) return;
     
-    const allImages: string[] = [];
+    // Look for option images (prioritize color/visual options)
+    // If a selected option has images, use those; otherwise fall back to base images
+    let optionImages: string[] | null = null;
     
-    // Collect option images from selected options
+    if (guitar.options) {
+      // Check options in order - if we find images, use them
+      for (const option of guitar.options) {
+        const selectedValueId = selectedOptions[option.optionId];
+        if (selectedValueId) {
+          const selectedValue = option.values.find(
+            (v) => v.valueId === selectedValueId,
+          );
+          if (selectedValue?.images && selectedValue.images.length > 0) {
+            optionImages = [...selectedValue.images];
+            break; // Use the first option with images (typically color)
+          }
+        }
+      }
+    }
+    
+    // If we found option-specific images, use those; otherwise use base images
+    if (optionImages && optionImages.length > 0) {
+      setDisplayImages(optionImages);
+    } else {
+      setDisplayImages(guitar.images || []);
+    }
+  }, [selectedOptions, guitar]);
+
+  // Calculate approximate local currency price (must be before conditional returns for Rules of Hooks)
+  const approximateLocalUnit = useMemo(() => {
+    if (!effectivePrice.price || !fxRates || !user?.currency || !guitar) return null;
+    
+    // Calculate final price with option adjustments (inline logic)
+    let base = effectivePrice.price;
     if (guitar.options) {
       guitar.options.forEach((option) => {
         const selectedValueId = selectedOptions[option.optionId];
@@ -145,25 +180,56 @@ export default function GuitarDetailPage({
           const selectedValue = option.values.find(
             (v) => v.valueId === selectedValueId,
           );
-          if (selectedValue?.images && selectedValue.images.length > 0) {
-            allImages.push(...selectedValue.images);
+          if (selectedValue?.priceAdjustment) {
+            base += selectedValue.priceAdjustment;
           }
         }
       });
     }
     
-    // Add base images (avoid duplicates)
-    const baseImages = guitar.images || [];
-    baseImages.forEach((img) => {
-      if (!allImages.includes(img)) {
-        allImages.push(img);
-      }
-    });
+    const rate =
+      user.currency === fxRates.base
+        ? 1
+        : fxRates.rates[user.currency] ?? null;
+    if (!rate) return null;
+    return base * rate;
+  }, [effectivePrice.price, fxRates, user?.currency, guitar, selectedOptions]);
+
+  // Calculate converted price for selected display currency
+  const convertedPrice = useMemo(() => {
+    if (!fxRates || !selectedDisplayCurrency || !guitar || !effectivePrice.price) return null;
     
-    // If we have option images, show them first, then base images
-    // Otherwise, just show base images
-    setDisplayImages(allImages.length > 0 ? allImages : baseImages);
-  }, [selectedOptions, guitar]);
+    // Calculate final price with option adjustments
+    let base: number = effectivePrice.price;
+    
+    if (guitar.options) {
+      guitar.options.forEach((option) => {
+        const selectedValueId = selectedOptions[option.optionId];
+        if (selectedValueId) {
+          const selectedValue = option.values.find(
+            (v) => v.valueId === selectedValueId,
+          );
+          if (selectedValue?.priceAdjustment) {
+            base += selectedValue.priceAdjustment;
+          }
+        }
+      });
+    }
+    
+    const rate =
+      selectedDisplayCurrency === fxRates.base
+        ? 1
+        : fxRates.rates[selectedDisplayCurrency] ?? null;
+    if (!rate) return null;
+    return base * rate;
+  }, [effectivePrice.price, fxRates, selectedDisplayCurrency, guitar, selectedOptions]);
+
+  // Initialize selected display currency to user's currency if available
+  useEffect(() => {
+    if (fxRates && !selectedDisplayCurrency && user?.currency) {
+      setSelectedDisplayCurrency(user.currency);
+    }
+  }, [fxRates, user?.currency]);
 
   if (authLoading || fetching) {
     return (
@@ -250,17 +316,6 @@ export default function GuitarDetailPage({
       [optionId]: valueId,
     }));
   };
-
-  const approximateLocalUnit = useMemo(() => {
-    const base = calculateFinalPrice() || effectivePrice.price;
-    if (!base || !fxRates || !user?.currency) return null;
-    const rate =
-      user.currency === fxRates.base
-        ? 1
-        : fxRates.rates[user.currency] ?? null;
-    if (!rate) return null;
-    return base * rate;
-  }, [calculateFinalPrice, effectivePrice.price, fxRates, user?.currency]);
 
   const validateOptions = () => {
     if (!guitar.options) return true;
@@ -476,6 +531,45 @@ export default function GuitarDetailPage({
 
             {/* Pricing Breakdown */}
             <div className="space-y-3 border-t border-white/10 pt-6">
+              {/* Currency Selector */}
+              <div className="mb-4 space-y-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                  View Price in Currency
+                </label>
+                <select
+                  value={selectedDisplayCurrency || user?.currency || "USD"}
+                  onChange={(e) => setSelectedDisplayCurrency(e.target.value)}
+                  disabled={!fxRates}
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {fxRates ? (
+                    ALLOWED_CURRENCIES.filter((currency) => {
+                      // Include currency if it's the base currency or available in rates
+                      return currency === fxRates.base || fxRates.rates[currency] != null;
+                    }).map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))
+                  ) : (
+                    ALLOWED_CURRENCIES.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))
+                  )}
+                </select>
+                {fxRates?.asOf ? (
+                  <p className="text-xs text-neutral-500">
+                    Exchange rates as of {new Date(fxRates.asOf).toLocaleDateString()}
+                  </p>
+                ) : (
+                  <p className="text-xs text-neutral-500">
+                    Exchange rates loading...
+                  </p>
+                )}
+              </div>
+
               <div className="flex items-center justify-between">
                 <span className="text-sm text-neutral-400">Base Price</span>
                 <PriceTag
@@ -590,30 +684,66 @@ export default function GuitarDetailPage({
               )}
 
               {/* Unit Price */}
-              <div className="flex items-baseline justify-between border-t border-white/10 pt-3">
-                <span className="text-base font-semibold text-white">
-                  Unit Price
-                </span>
-                <span className="text-2xl font-bold text-accent">
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: user.currency || "USD",
-                  }).format(calculateFinalPrice() || effectivePrice.price || 0)}
-                </span>
+              <div className="space-y-2 border-t border-white/10 pt-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-base font-semibold text-white">
+                    Unit Price
+                  </span>
+                  <div className="flex flex-col items-end">
+                    <span className="text-2xl font-bold text-accent">
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: user.currency || "USD",
+                      }).format(calculateFinalPrice() || effectivePrice.price || 0)}
+                    </span>
+                    {/* Converted Price Estimate */}
+                    {convertedPrice &&
+                      selectedDisplayCurrency &&
+                      selectedDisplayCurrency !== user?.currency && (
+                        <span className="mt-1 text-sm text-neutral-400">
+                          ≈ {new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: selectedDisplayCurrency,
+                          }).format(convertedPrice)}{" "}
+                          <span className="text-xs text-neutral-500">
+                            (estimate)
+                          </span>
+                        </span>
+                      )}
+                  </div>
+                </div>
               </div>
 
               {/* Total Price */}
               {calculateFinalPrice() && (
-                <div className="flex items-baseline justify-between rounded-lg border border-accent/30 bg-accent/10 px-4 py-3">
-                  <span className="text-sm font-semibold text-white">
-                    Total ({quantity} {quantity === 1 ? "item" : "items"})
-                  </span>
-                  <span className="text-xl font-bold text-accent">
-                    {new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: user.currency || "USD",
-                    }).format(calculateFinalPrice()! * quantity)}
-                  </span>
+                <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold text-white">
+                      Total ({quantity} {quantity === 1 ? "item" : "items"})
+                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className="text-xl font-bold text-accent">
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: user.currency || "USD",
+                        }).format(calculateFinalPrice()! * quantity)}
+                      </span>
+                      {/* Converted Total Estimate */}
+                      {convertedPrice &&
+                        selectedDisplayCurrency &&
+                        selectedDisplayCurrency !== user?.currency && (
+                          <span className="mt-1 text-sm text-neutral-300">
+                            ≈ {new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: selectedDisplayCurrency,
+                            }).format(convertedPrice * quantity)}{" "}
+                            <span className="text-xs text-neutral-400">
+                              (estimate)
+                            </span>
+                          </span>
+                        )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

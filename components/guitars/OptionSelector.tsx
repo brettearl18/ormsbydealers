@@ -52,7 +52,7 @@ export function OptionSelector({ option, value, onChange }: Props) {
             key={val.valueId}
             type="button"
             onClick={() => handleChange(val.valueId)}
-            className={`group relative overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${
+            className={`group relative flex flex-col overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${
               selectedValue === val.valueId
                 ? "border-accent bg-accent/20 shadow-lg shadow-accent/30 ring-2 ring-accent/20"
                 : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
@@ -60,7 +60,7 @@ export function OptionSelector({ option, value, onChange }: Props) {
           >
             {/* Option Image if available */}
             {val.images && val.images.length > 0 && (
-              <div className="mb-2 aspect-square w-full overflow-hidden rounded-lg bg-neutral-900">
+              <div className="mb-3 aspect-square w-full overflow-hidden rounded-lg bg-neutral-900">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={val.images[0]}
@@ -70,12 +70,18 @@ export function OptionSelector({ option, value, onChange }: Props) {
               </div>
             )}
             
+            {/* Title and SKU below image */}
             <div className="space-y-1">
               <p className={`text-sm font-medium ${
                 selectedValue === val.valueId ? "text-white" : "text-white"
               }`}>
                 {val.label}
               </p>
+              {val.skuSuffix && (
+                <p className="text-[10px] text-neutral-500">
+                  SKU: {val.skuSuffix}
+                </p>
+              )}
               {val.priceAdjustment && val.priceAdjustment !== 0 && (
                 <p
                   className={`text-xs font-medium ${
@@ -89,11 +95,6 @@ export function OptionSelector({ option, value, onChange }: Props) {
                     style: "currency",
                     currency: "USD",
                   }).format(val.priceAdjustment)}
-                </p>
-              )}
-              {val.skuSuffix && (
-                <p className="text-[10px] text-neutral-500">
-                  SKU: {val.skuSuffix}
                 </p>
               )}
             </div>
