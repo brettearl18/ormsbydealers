@@ -4,7 +4,7 @@ import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { AccountDoc, OrderDoc, TierDoc, OrderLineDoc, GuitarDoc } from "@/lib/types";
+import { AccountDoc, OrderDoc, TierDoc, OrderLineDoc, GuitarDoc, ShippingAddress } from "@/lib/types";
 import Link from "next/link";
 import {
   ArrowLeftIcon,
@@ -20,6 +20,76 @@ const STATUS_COLORS = {
   APPROVED: "bg-green-500/20 text-green-400",
   SUSPENDED: "bg-red-500/20 text-red-400",
 };
+
+function AddressFields({
+  address,
+  onChange,
+}: {
+  address?: Partial<ShippingAddress> | null;
+  onChange: (a: ShippingAddress) => void;
+}) {
+  const a = address ?? {};
+  const update = (key: keyof ShippingAddress, value: string) => {
+    onChange({ ...a, [key]: value || undefined } as ShippingAddress);
+  };
+  return (
+    <div className="grid gap-2">
+      <input
+        type="text"
+        placeholder="Company"
+        value={a.company ?? ""}
+        onChange={(e) => update("company", e.target.value)}
+        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+      />
+      <input
+        type="text"
+        placeholder="Address line 1"
+        value={a.line1 ?? ""}
+        onChange={(e) => update("line1", e.target.value)}
+        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+      />
+      <input
+        type="text"
+        placeholder="Address line 2"
+        value={a.line2 ?? ""}
+        onChange={(e) => update("line2", e.target.value)}
+        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="text"
+          placeholder="City"
+          value={a.city ?? ""}
+          onChange={(e) => update("city", e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+        />
+        <input
+          type="text"
+          placeholder="Region / State"
+          value={a.region ?? ""}
+          onChange={(e) => update("region", e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="text"
+          placeholder="Postal code"
+          value={a.postalCode ?? ""}
+          onChange={(e) => update("postalCode", e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+        />
+        <input
+          type="text"
+          placeholder="Country"
+          value={a.country ?? ""}
+          onChange={(e) => update("country", e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function AccountDetailPage({
   params,
@@ -39,6 +109,8 @@ export default function AccountDetailPage({
   const [selectedTier, setSelectedTier] = useState<string>("");
   const [selectedCurrency, setSelectedCurrency] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState<Partial<AccountDoc> & { id?: string }>({});
 
   useEffect(() => {
     async function fetchAccount() {
@@ -201,6 +273,196 @@ export default function AccountDetailPage({
             </span>
           )}
         </div>
+
+        {/* Edit Account form */}
+        {editMode && (
+          <div className="rounded-2xl border border-accent/30 bg-white/5 p-6">
+            <h2 className="mb-6 text-lg font-semibold text-white">Edit Account</h2>
+            <form
+              className="space-y-6"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                try {
+                  const payload: Record<string, unknown> = {
+                    name: formData.name ?? account.name,
+                    tierId: formData.tierId ?? account.tierId,
+                    currency: formData.currency ?? account.currency,
+                    updatedAt: new Date().toISOString(),
+                  };
+                  if (formData.territory !== undefined) payload.territory = formData.territory || "";
+                  if (formData.terms !== undefined) payload.terms = formData.terms || "";
+                  if (formData.contactName !== undefined) payload.contactName = formData.contactName || "";
+                  if (formData.contactEmail !== undefined) payload.contactEmail = formData.contactEmail || "";
+                  if (formData.contactPhone !== undefined) payload.contactPhone = formData.contactPhone || "";
+                  if (formData.notes !== undefined) payload.notes = formData.notes || "";
+                  const billing = formData.billingAddress;
+                  if (billing && (billing.line1 || billing.city || billing.country)) {
+                    payload.billingAddress = {
+                      company: billing.company ?? "",
+                      line1: billing.line1 || "",
+                      line2: billing.line2 ?? "",
+                      city: billing.city || "",
+                      region: billing.region ?? "",
+                      postalCode: billing.postalCode ?? "",
+                      country: billing.country || "",
+                    };
+                  }
+                  const shipping = formData.shippingAddress;
+                  if (shipping && (shipping.line1 || shipping.city || shipping.country)) {
+                    payload.shippingAddress = {
+                      company: shipping.company ?? "",
+                      line1: shipping.line1 || "",
+                      line2: shipping.line2 ?? "",
+                      city: shipping.city || "",
+                      region: shipping.region ?? "",
+                      postalCode: shipping.postalCode ?? "",
+                      country: shipping.country || "",
+                    };
+                  }
+                  await updateDoc(doc(db, "accounts", accountId), payload);
+                  const updated = { ...account, ...payload } as AccountDoc & { id: string };
+                  setAccount(updated);
+                  setEditMode(false);
+                } catch (err) {
+                  console.error("Error updating account:", err);
+                  alert("Failed to update account");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Company name</label>
+                  <input
+                    type="text"
+                    value={formData.name ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Pricing tier</label>
+                  <select
+                    value={formData.tierId ?? account.tierId}
+                    onChange={(e) => setFormData((p) => ({ ...p, tierId: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  >
+                    {tiers.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} ({t.id})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Currency</label>
+                  <select
+                    value={formData.currency ?? account.currency}
+                    onChange={(e) => setFormData((p) => ({ ...p, currency: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                    <option value="AUD">AUD</option>
+                    <option value="CAD">CAD</option>
+                    <option value="JPY">JPY</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Territory</label>
+                  <input
+                    type="text"
+                    value={formData.territory ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, territory: e.target.value }))}
+                    placeholder="e.g. US"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Terms & conditions</label>
+                <textarea
+                  value={formData.terms ?? ""}
+                  onChange={(e) => setFormData((p) => ({ ...p, terms: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Contact name</label>
+                  <input
+                    type="text"
+                    value={formData.contactName ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, contactName: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Contact email</label>
+                  <input
+                    type="email"
+                    value={formData.contactEmail ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, contactEmail: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Contact phone</label>
+                  <input
+                    type="text"
+                    value={formData.contactPhone ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, contactPhone: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-white">Billing address</h3>
+                  <AddressFields
+                    address={formData.billingAddress}
+                    onChange={(billingAddress) => setFormData((p) => ({ ...p, billingAddress }))}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-white">Shipping address</h3>
+                  <AddressFields
+                    address={formData.shippingAddress}
+                    onChange={(shippingAddress) => setFormData((p) => ({ ...p, shippingAddress }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Notes</label>
+                <textarea
+                  value={formData.notes ?? ""}
+                  onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black transition hover:bg-accent-soft disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  disabled={saving}
+                  className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Content - 2/3 width */}
@@ -516,7 +778,30 @@ export default function AccountDetailPage({
                 >
                   View All Orders
                 </Link>
-                <button className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({
+                      name: account.name,
+                      tierId: account.tierId,
+                      currency: account.currency,
+                      territory: account.territory ?? "",
+                      terms: account.terms ?? "",
+                      contactName: (account as AccountDoc).contactName ?? "",
+                      contactEmail: (account as AccountDoc).contactEmail ?? "",
+                      contactPhone: (account as AccountDoc).contactPhone ?? "",
+                      billingAddress: (account as AccountDoc).billingAddress
+                        ? { ...(account as AccountDoc).billingAddress }
+                        : undefined,
+                      shippingAddress: (account as AccountDoc).shippingAddress
+                        ? { ...(account as AccountDoc).shippingAddress }
+                        : undefined,
+                      notes: (account as AccountDoc).notes ?? "",
+                    });
+                    setEditMode(true);
+                  }}
+                  className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10"
+                >
                   Edit Account
                 </button>
                 <button className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10">

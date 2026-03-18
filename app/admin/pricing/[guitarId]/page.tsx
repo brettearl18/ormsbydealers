@@ -2,9 +2,9 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { GuitarDoc, PricesDoc, TierDoc, AccountDoc, PromoPrice, QuantityBreak } from "@/lib/types";
+import { GuitarDoc, PricesDoc, TierDoc, AccountDoc, PromoPrice, QuantityBreak, GuitarOption } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeftIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { collection, getDocs } from "firebase/firestore";
@@ -45,6 +45,18 @@ export default function EditPricingPage({
     promo: null,
   });
 
+  // Variant pricing: when strings option exists we store absolute dealerPrice/rrp per value; otherwise adjustments
+  type VariantValueForm = {
+    valueId: string;
+    label: string;
+    priceAdjustment: string;
+    rrpAdjustment: string;
+    dealerPrice?: string; // absolute (used when string count is primary)
+    rrp?: string;
+  };
+  type VariantOptionForm = { optionId: string; label: string; values: VariantValueForm[] };
+  const [variantPrices, setVariantPrices] = useState<VariantOptionForm[]>([]);
+
   useEffect(() => {
     fetchData();
   }, [guitarId]);
@@ -65,7 +77,8 @@ export default function EditPricingPage({
         return;
       }
 
-      setGuitar(guitarSnap.data() as GuitarDoc);
+      const guitarData = guitarSnap.data() as GuitarDoc;
+      setGuitar(guitarData);
 
       const pricesData = pricesSnap.exists()
         ? (pricesSnap.data() as PricesDoc)
@@ -139,6 +152,56 @@ export default function EditPricingPage({
           promo: null,
         });
       }
+
+      // String count = absolute price per variant; colour = optional adjustment added to base
+      if (guitarData.options && guitarData.options.length > 0) {
+        const basePrice = pricesData?.basePrice ?? 0;
+        const baseRrp = pricesData?.rrp ?? 0;
+        const isStrings = (o: { optionId: string; label: string }) =>
+          o.optionId === "strings" || o.label.toLowerCase().includes("string");
+        const isColour = (o: { optionId: string; label: string }) =>
+          o.optionId === "colour" ||
+          o.optionId === "color" ||
+          o.label.toLowerCase().includes("colour") ||
+          o.label.toLowerCase().includes("color");
+        const variantOpts = guitarData.options.filter(
+          (opt) => isStrings(opt) || isColour(opt)
+        );
+        setVariantPrices(
+          variantOpts.map((opt) => {
+            if (isStrings(opt)) {
+              return {
+                optionId: opt.optionId,
+                label: opt.label,
+                values: opt.values.map((v) => {
+                  const adj = v.priceAdjustment ?? 0;
+                  const rrpAdj = v.rrpAdjustment ?? 0;
+                  return {
+                    valueId: v.valueId,
+                    label: v.label,
+                    priceAdjustment: v.priceAdjustment != null ? v.priceAdjustment.toString() : "",
+                    rrpAdjustment: v.rrpAdjustment != null ? v.rrpAdjustment.toString() : "",
+                    dealerPrice: (basePrice + adj).toString(),
+                    rrp: (baseRrp + rrpAdj).toString(),
+                  };
+                }),
+              };
+            }
+            return {
+              optionId: opt.optionId,
+              label: opt.label,
+              values: opt.values.map((v) => ({
+                valueId: v.valueId,
+                label: v.label,
+                priceAdjustment: v.priceAdjustment != null ? v.priceAdjustment.toString() : "",
+                rrpAdjustment: v.rrpAdjustment != null ? v.rrpAdjustment.toString() : "",
+              })),
+            };
+          })
+        );
+      } else {
+        setVariantPrices([]);
+      }
     } catch (err) {
       console.error("Error fetching pricing data:", err);
       setError("Failed to load pricing data");
@@ -152,11 +215,31 @@ export default function EditPricingPage({
     setError(null);
 
     try {
-      const basePrice = parseFloat(formData.basePrice);
-      if (isNaN(basePrice) || basePrice < 0) {
-        setError("Base price must be a valid positive number");
-        setSaving(false);
-        return;
+      let basePrice: number;
+      let rrp: number | undefined;
+
+      if (variantPrices.length > 0) {
+        // String count is the determining factor: base = first *string* variant's price (not colour)
+        const stringsFormOpt = variantPrices.find((o) => o.values[0]?.dealerPrice != null);
+        const firstVal = stringsFormOpt?.values[0];
+        const firstDealer = firstVal?.dealerPrice?.trim();
+        const firstRrpStr = firstVal?.rrp?.trim();
+        basePrice = firstDealer ? parseFloat(firstDealer) : 0;
+        rrp = firstRrpStr ? parseFloat(firstRrpStr) : undefined;
+        if (isNaN(basePrice) || basePrice < 0) {
+          setError("Enter a valid dealer price for at least one string variant");
+          setSaving(false);
+          return;
+        }
+      } else {
+        basePrice = parseFloat(formData.basePrice);
+        if (isNaN(basePrice) || basePrice < 0) {
+          setError("Base price must be a valid positive number");
+          setSaving(false);
+          return;
+        }
+        const rrpValue = formData.rrp.trim();
+        rrp = rrpValue ? parseFloat(rrpValue) : undefined;
       }
 
       const tierPrices: Record<string, number> = {};
@@ -242,9 +325,7 @@ export default function EditPricingPage({
         };
       }
 
-      const rrpValue = formData.rrp.trim();
-      const rrp = rrpValue ? parseFloat(rrpValue) : undefined;
-      if (rrpValue && (isNaN(rrp!) || rrp! < 0)) {
+      if (rrp != null && (isNaN(rrp) || rrp < 0)) {
         setError("RRP must be a valid positive number or empty");
         setSaving(false);
         return;
@@ -279,6 +360,58 @@ export default function EditPricingPage({
 
       await setDoc(doc(db, "prices", guitarId), cleanDoc, { merge: true });
 
+      // Persist variant pricing (option value adjustments) to the guitar doc
+      if (guitar && variantPrices.length > 0 && guitar.options && guitar.options.length > 0) {
+        const isStringsForm = (formOpt: VariantOptionForm) =>
+          formOpt.values[0]?.dealerPrice != null;
+        const updatedOptions: GuitarOption[] = guitar.options.map((opt) => {
+          const formOpt = variantPrices.find((f) => f.optionId === opt.optionId);
+          if (!formOpt) return opt;
+          const out: GuitarOption = { ...opt, values: [] };
+          if (isStringsForm(formOpt)) {
+            const firstDealer = formOpt.values[0]?.dealerPrice?.trim();
+            const firstRrp = formOpt.values[0]?.rrp?.trim();
+            const formBaseDealer = firstDealer ? parseFloat(firstDealer) : 0;
+            const formBaseRrp = firstRrp ? parseFloat(firstRrp) : 0;
+            out.values = opt.values.map((v) => {
+              const formVal = formOpt.values.find((f) => f.valueId === v.valueId);
+              if (!formVal) return v;
+              const dealerStr = formVal.dealerPrice?.trim();
+              const rrpStr = formVal.rrp?.trim();
+              const dealerNum = dealerStr ? parseFloat(dealerStr) : NaN;
+              const rrpNum = rrpStr ? parseFloat(rrpStr) : NaN;
+              const priceAdjustment = !isNaN(dealerNum) ? dealerNum - formBaseDealer : undefined;
+              const rrpAdjustment = !isNaN(rrpNum) ? rrpNum - formBaseRrp : undefined;
+              const outV: typeof v = { ...v };
+              if (typeof priceAdjustment === "number") outV.priceAdjustment = priceAdjustment;
+              if (typeof rrpAdjustment === "number") outV.rrpAdjustment = rrpAdjustment;
+              return outV;
+            });
+          } else {
+            out.values = opt.values.map((v) => {
+              const formVal = formOpt.values.find((f) => f.valueId === v.valueId);
+              if (!formVal) return v;
+              const priceStr = formVal.priceAdjustment?.trim();
+              const rrpStr = formVal.rrpAdjustment?.trim();
+              const priceNum = priceStr ? parseFloat(priceStr) : NaN;
+              const rrpNum = rrpStr ? parseFloat(rrpStr) : NaN;
+              const priceAdjustment = !isNaN(priceNum) ? priceNum : undefined;
+              const rrpAdjustment = !isNaN(rrpNum) ? rrpNum : undefined;
+              const outV: typeof v = { ...v };
+              if (typeof priceAdjustment === "number") outV.priceAdjustment = priceAdjustment;
+              if (typeof rrpAdjustment === "number") outV.rrpAdjustment = rrpAdjustment;
+              return outV;
+            });
+          }
+          return out;
+        });
+        const cleanOptions = JSON.parse(JSON.stringify(updatedOptions)) as GuitarOption[];
+        await updateDoc(doc(db, "guitars", guitarId), {
+          options: cleanOptions,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       // Refresh data
       await fetchData();
       alert("Pricing updated successfully!");
@@ -308,6 +441,48 @@ export default function EditPricingPage({
         [accountId]: value,
       },
     }));
+  }
+
+  function updateVariantAdjustment(
+    optionIndex: number,
+    valueIndex: number,
+    field: "priceAdjustment" | "rrpAdjustment",
+    value: string
+  ) {
+    setVariantPrices((prev) => {
+      const next = prev.map((opt, oi) =>
+        oi === optionIndex
+          ? {
+              ...opt,
+              values: opt.values.map((v, vi) =>
+                vi === valueIndex ? { ...v, [field]: value } : v
+              ),
+            }
+          : opt
+      );
+      return next;
+    });
+  }
+
+  function updateVariantAbsolute(
+    optionIndex: number,
+    valueIndex: number,
+    field: "dealerPrice" | "rrp",
+    value: string
+  ) {
+    setVariantPrices((prev) => {
+      const next = prev.map((opt, oi) =>
+        oi === optionIndex
+          ? {
+              ...opt,
+              values: opt.values.map((v, vi) =>
+                vi === valueIndex ? { ...v, [field]: value } : v
+              ),
+            }
+          : opt
+      );
+      return next;
+    });
   }
 
   function togglePromo() {
@@ -404,47 +579,235 @@ export default function EditPricingPage({
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-white">
-                  Dealer Price (AUD) <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.basePrice}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, basePrice: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
-                  placeholder="0.00"
-                  required
-                />
-                <p className="mt-1 text-xs text-neutral-400">
-                  Default dealer price; tier/account overrides may apply
-                </p>
+            {/* When guitar has string variants, pricing is set per string count; colour can add an extra amount. */}
+            {variantPrices.some((o) => o.values[0]?.dealerPrice != null) ? (
+              <div className="space-y-8">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    String count pricing
+                  </label>
+                  <p className="mb-4 text-xs text-neutral-400">
+                    Set dealer price and RRP for each string count. This is the base price.
+                  </p>
+                  <div className="space-y-6">
+                    {variantPrices
+                      .filter((opt) => opt.values[0]?.dealerPrice != null)
+                      .map((opt, optionIndex) => {
+                        const idx = variantPrices.indexOf(opt);
+                        return (
+                          <div
+                            key={opt.optionId}
+                            className="rounded-lg border border-white/10 bg-white/5 p-4"
+                          >
+                            <h3 className="mb-3 text-sm font-medium text-white">
+                              {opt.label}
+                            </h3>
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[400px] text-sm">
+                                <thead>
+                                  <tr className="border-b border-white/10 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
+                                    <th className="pb-2 pr-4">Variant</th>
+                                    <th className="pb-2 pr-4 w-40">Dealer price (AUD)</th>
+                                    <th className="pb-2 w-40">RRP (AUD)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {opt.values.map((v, valueIndex) => (
+                                    <tr
+                                      key={v.valueId}
+                                      className="border-b border-white/5"
+                                    >
+                                      <td className="py-2 pr-4 font-medium text-white">
+                                        {v.label}
+                                      </td>
+                                      <td className="py-2 pr-4">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={v.dealerPrice ?? ""}
+                                          onChange={(e) =>
+                                            updateVariantAbsolute(
+                                              idx,
+                                              valueIndex,
+                                              "dealerPrice",
+                                              e.target.value
+                                            )
+                                          }
+                                          placeholder="0.00"
+                                          className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+                                        />
+                                      </td>
+                                      <td className="py-2">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={v.rrp ?? ""}
+                                          onChange={(e) =>
+                                            updateVariantAbsolute(
+                                              idx,
+                                              valueIndex,
+                                              "rrp",
+                                              e.target.value
+                                            )
+                                          }
+                                          placeholder="0.00"
+                                          className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+                                        />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+                {variantPrices.some(
+                  (o) =>
+                    o.values[0]?.dealerPrice == null &&
+                    (o.optionId === "colour" ||
+                      o.optionId === "color" ||
+                      o.label.toLowerCase().includes("colour") ||
+                      o.label.toLowerCase().includes("color"))
+                ) && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-white">
+                      Colour adjustments (optional)
+                    </label>
+                    <p className="mb-4 text-xs text-neutral-400">
+                      Add an extra amount to the base price for specific colours. Leave 0 if the colour has no price difference.
+                    </p>
+                    <div className="space-y-6">
+                      {variantPrices
+                        .filter(
+                          (opt) =>
+                            opt.values[0]?.dealerPrice == null &&
+                            (opt.optionId === "colour" ||
+                              opt.optionId === "color" ||
+                              opt.label.toLowerCase().includes("colour") ||
+                              opt.label.toLowerCase().includes("color"))
+                        )
+                        .map((opt, optionIndex) => {
+                          const idx = variantPrices.indexOf(opt);
+                          return (
+                            <div
+                              key={opt.optionId}
+                              className="rounded-lg border border-white/10 bg-white/5 p-4"
+                            >
+                              <h3 className="mb-3 text-sm font-medium text-white">
+                                {opt.label}
+                              </h3>
+                              <div className="overflow-x-auto">
+                                <table className="w-full min-w-[400px] text-sm">
+                                  <thead>
+                                    <tr className="border-b border-white/10 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
+                                      <th className="pb-2 pr-4">Variant</th>
+                                      <th className="pb-2 pr-4 w-40">Dealer adj. (AUD)</th>
+                                      <th className="pb-2 w-40">RRP adj. (AUD)</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {opt.values.map((v, valueIndex) => (
+                                      <tr
+                                        key={v.valueId}
+                                        className="border-b border-white/5"
+                                      >
+                                        <td className="py-2 pr-4 font-medium text-white">
+                                          {v.label}
+                                        </td>
+                                        <td className="py-2 pr-4">
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            value={v.priceAdjustment ?? ""}
+                                            onChange={(e) =>
+                                              updateVariantAdjustment(
+                                                idx,
+                                                valueIndex,
+                                                "priceAdjustment",
+                                                e.target.value
+                                              )
+                                            }
+                                            placeholder="0"
+                                            className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+                                          />
+                                        </td>
+                                        <td className="py-2">
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            value={v.rrpAdjustment ?? ""}
+                                            onChange={(e) =>
+                                              updateVariantAdjustment(
+                                                idx,
+                                                valueIndex,
+                                                "rrpAdjustment",
+                                                e.target.value
+                                              )
+                                            }
+                                            placeholder="0"
+                                            className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
+                                          />
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-white">
-                  RRP (AUD)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.rrp}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, rrp: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
-                  placeholder="0.00"
-                />
-                <p className="mt-1 text-xs text-neutral-400">
-                  Recommended retail price for display to dealers
-                </p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    Dealer Price (AUD) <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.basePrice}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, basePrice: e.target.value }))
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
+                    placeholder="0.00"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Default dealer price; tier/account overrides may apply
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white">
+                    RRP (AUD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.rrp}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, rrp: e.target.value }))
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
+                    placeholder="0.00"
+                  />
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Recommended retail price for display to dealers
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Quantity-Based Pricing */}
             <div>

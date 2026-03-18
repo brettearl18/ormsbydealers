@@ -7,12 +7,28 @@ export interface UserDoc {
   name: string;
 }
 
+export interface ShippingAddress {
+  company?: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  region?: string;
+  postalCode?: string;
+  country: string;
+}
+
 export interface AccountDoc {
   name: string;
   tierId: string;
   currency: string;
   territory?: string;
   terms?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  billingAddress?: ShippingAddress;
+  shippingAddress?: ShippingAddress;
+  notes?: string;
 }
 
 export interface AccountRequestDoc {
@@ -141,16 +157,6 @@ export type OrderStatus =
 export interface OrderTotals {
   subtotal: number;
   currency: string;
-}
-
-export interface ShippingAddress {
-  company?: string;
-  line1: string;
-  line2?: string;
-  city: string;
-  region?: string;
-  postalCode?: string;
-  country: string;
 }
 
 export interface OrderDoc {

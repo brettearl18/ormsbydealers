@@ -264,6 +264,46 @@ export default function AdminPricingPage() {
                         )}
                       </span>
                     </div>
+                    {/* Variant costs (string count) */}
+                    {guitar.options &&
+                      guitar.prices?.basePrice != null &&
+                      (() => {
+                        const stringsOption = guitar.options.find(
+                          (o) =>
+                            o.optionId === "strings" ||
+                            o.label.toLowerCase().includes("string"),
+                        );
+                        if (!stringsOption || stringsOption.values.length === 0)
+                          return null;
+                        const base = guitar.prices.basePrice;
+                        return (
+                          <div className="mt-2 border-t border-white/10 pt-2">
+                            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                              Variant cost
+                            </p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                              {stringsOption.values.map((v) => {
+                                const adj = v.priceAdjustment ?? 0;
+                                const variantPrice = base + adj;
+                                return (
+                                  <span
+                                    key={v.valueId}
+                                    className="text-neutral-300"
+                                  >
+                                    {v.label}:{" "}
+                                    <span className="font-medium text-white">
+                                      {formatPrice(
+                                        variantPrice,
+                                        guitar.prices?.currency,
+                                      )}
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     {guitar.prices?.currency && (
                       <p className="text-[10px] text-neutral-500">
                         Currency: {guitar.prices.currency}
