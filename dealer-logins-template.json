@@ -1,0 +1,138 @@
+{
+  "_comment": "Dealer login seed template. Fill this with one entry per dealer you want to give portal access to, then we will run a script to create users and set claims.",
+  "schemaVersion": "1.0",
+  "dealers": [
+    {
+      "dealerName": "Guitar Factory",
+      "accountId": "acct_guitar-factory",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@guitarfactory.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Pro Music Tools",
+      "accountId": "acct_pro-music-tools",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@promusictools.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Drop Dee",
+      "accountId": "acct_drop-dee",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@dropdee.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Musik Alley",
+      "accountId": "acct_musik-alley",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@musikalley.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Guitar Brando",
+      "accountId": "acct_guitar-brando",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@guitarbrando.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Zjon Guitar Store",
+      "accountId": "acct_zjon-guitar-store",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@zjonguitarstore.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Kikutani",
+      "accountId": "acct_kikutani",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@kikutani.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Klundert Music",
+      "accountId": "acct_klundert-music",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@klundertainmusic.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Guitar Candy",
+      "accountId": "acct_guitar-candy",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@guitarcandy.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Guitar Hiro",
+      "accountId": "acct_guitar-hiro",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@guitarhiro.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Holiday",
+      "accountId": "acct_holiday",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@holiday.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    },
+    {
+      "dealerName": "Live Louder",
+      "accountId": "acct_live-louder",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "login": {
+        "email": "orders@livelouder.example",
+        "tempPassword": "TempPass123!",
+        "enabled": true
+      }
+    }
+  ]
+}

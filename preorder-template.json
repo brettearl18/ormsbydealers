@@ -1,0 +1,32 @@
+{
+  "_comment": "Pre-order template. One entry per dealer. Fill this out; we'll use it to create draft orders for each dealer. Emails/login are handled separately.",
+  "schemaVersion": "1.0",
+  "baseLoginUrl": "https://dealer-portal-lvw4ax43o-brett-earls-projects.vercel.app/login",
+  "defaultCurrency": "AUD",
+  "dealers": [
+    {
+      "dealerName": "",
+      "companyLegalName": "",
+      "accountId": "",
+      "tierId": "TIER_A",
+      "currency": "AUD",
+      "runs": [
+        {
+          "run": "",
+          "poNumber": "",
+          "notes": "",
+          "status": "DRAFT", 
+          "lineItems": [
+            {
+              "model": "",
+              "colour": "",
+              "strings": 6,
+              "qty": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

@@ -5,7 +5,7 @@ import { useEffect, useState, use } from "react";
 import { doc, getDoc, collection, getDocs, updateDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
-import { OrderDoc, OrderLineDoc, OrderStatus } from "@/lib/types";
+import { OrderDoc, OrderLineDoc, OrderStatus, GuitarDoc } from "@/lib/types";
 import Link from "next/link";
 import { 
   ArrowLeftIcon,
@@ -32,6 +32,7 @@ export default function AdminOrderDetailPage({
   const { orderId } = use(params);
   const [order, setOrder] = useState<(OrderDoc & { id: string }) | null>(null);
   const [orderLines, setOrderLines] = useState<Array<OrderLineDoc & { id: string }>>([]);
+  const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -84,6 +85,19 @@ export default function AdminOrderDetailPage({
         ...doc.data(),
       })) as Array<OrderLineDoc & { id: string }>;
       setOrderLines(linesData);
+
+      // Fetch guitar data for all unique guitars in order lines
+      const uniqueGuitarIds = Array.from(
+        new Set(linesData.map((line) => line.guitarId)),
+      );
+      const guitars = new Map<string, GuitarDoc>();
+      for (const guitarId of uniqueGuitarIds) {
+        const guitarSnap = await getDoc(doc(db, "guitars", guitarId));
+        if (guitarSnap.exists()) {
+          guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
+        }
+      }
+      setGuitarsMap(guitars);
     } catch (err) {
       console.error(err);
       setError("Unable to load order");
@@ -234,41 +248,82 @@ export default function AdminOrderDetailPage({
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <h2 className="mb-4 text-lg font-semibold text-white">Order Items</h2>
               <div className="space-y-4">
-                {orderLines.map((line) => (
-                  <div
-                    key={line.id}
-                    className="rounded-lg border border-white/10 bg-black/20 p-4"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-white">{line.name}</h3>
-                        <p className="mt-1 text-xs text-neutral-400">SKU: {line.sku}</p>
-                        {line.selectedOptions && Object.keys(line.selectedOptions).length > 0 && (
-                          <div className="mt-2 space-y-1 text-xs text-neutral-400">
-                            {Object.entries(line.selectedOptions).map(([key, value]) => (
-                              <div key={key}>
-                                <span className="capitalize">{key}:</span> {value}
-                              </div>
-                            ))}
+                {orderLines.map((line) => {
+                  const guitar = guitarsMap.get(line.guitarId);
+
+                  // Determine image URL: prefer option-specific image, fallback to base image
+                  let imageUrl: string | null = null;
+                  if (guitar) {
+                    if (guitar.options && line.selectedOptions) {
+                      for (const option of guitar.options) {
+                        const selectedValueId = line.selectedOptions[option.optionId];
+                        if (selectedValueId) {
+                          const selectedValue = option.values.find(
+                            (v) => v.valueId === selectedValueId,
+                          );
+                          if (selectedValue?.images && selectedValue.images.length > 0) {
+                            imageUrl = selectedValue.images[0];
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    if (!imageUrl && guitar.images && guitar.images.length > 0) {
+                      imageUrl = guitar.images[0];
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={line.id}
+                      className="rounded-lg border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex gap-4">
+                        {imageUrl && (
+                          <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-neutral-900">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={imageUrl}
+                              alt={line.name}
+                              className="h-full w-full object-cover"
+                            />
                           </div>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-white">
-                          Qty: {line.qty}
-                        </p>
-                        <p className="text-xs text-neutral-400">
-                          {order.currency === "USD" ? "$" : order.currency}{" "}
-                          {line.unitPrice.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{" "}
-                          each
-                        </p>
+                        <div className="flex-1 flex items-start justify-between">
+                          <div>
+                            <h3 className="font-semibold text-white">{line.name}</h3>
+                            <p className="mt-1 text-xs text-neutral-400">SKU: {line.sku}</p>
+                            {line.selectedOptions &&
+                              Object.keys(line.selectedOptions).length > 0 && (
+                                <div className="mt-2 space-y-1 text-xs text-neutral-400">
+                                  {Object.entries(line.selectedOptions).map(
+                                    ([key, value]) => (
+                                      <div key={key}>
+                                        <span className="capitalize">{key}:</span> {value}
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              )}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-white">
+                              Qty: {line.qty}
+                            </p>
+                            <p className="text-xs text-neutral-400">
+                              {order.currency === "USD" ? "$" : order.currency}{" "}
+                              {line.unitPrice.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              each
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
