@@ -102,8 +102,8 @@ export default function EditGuitarPage({
         sku: formData.sku!,
         name: formData.name!,
         series: formData.series!,
-        run: formData.run || undefined,
-        etaDelivery: formData.etaDelivery || undefined,
+        run: formData.run ?? "",
+        etaDelivery: formData.etaDelivery ?? "",
         images: formData.images || [],
         specs: {
           body: formData.specs?.body || "",

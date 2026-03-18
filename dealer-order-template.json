@@ -1,0 +1,307 @@
+{
+  "schemaVersion": "1.0",
+  "generatedAt": "2026-03-18",
+  "scope": {
+    "includes": ["Run 19", "Run 20", "Run 21", "TX Shark"],
+    "excludes": ["customer pre-orders"],
+    "notes": [
+      "Run 20 entries are totals-only due to missing reliable line-item breakdown in this chat."
+    ]
+  },
+  "runs": [
+    {
+      "run": "Run 19",
+      "dataStatus": "complete",
+      "dealers": [
+        {
+          "dealer": "Guitar Factory",
+          "totalUnits": 16,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Opaline", "strings": 6, "qty": 1 },
+            { "model": "Genesis", "colour": "Black", "strings": 7, "qty": 1 },
+            { "model": "Genesis", "colour": "Seafoam", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Natural", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Natural", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Splice", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Splice", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Pro Music Tools",
+          "totalUnits": 19,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Opaline", "strings": 7, "qty": 1 },
+            { "model": "Genesis", "colour": "Seafoam", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Natural", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Natural", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Splice", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Splice", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 6, "qty": 2 },
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Drop Dee",
+          "totalUnits": 10,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Opaline", "strings": 6, "qty": 1 },
+            { "model": "Genesis", "colour": "Seafoam", "strings": 6, "qty": 1 },
+            { "model": "Genesis", "colour": "Cream", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Klundert Music",
+          "totalUnits": 8,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Seafoam", "strings": 7, "qty": 1 },
+            { "model": "Genesis", "colour": "Cream", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Dahlia Black", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Musik Alley",
+          "totalUnits": 5,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Seafoam", "strings": 6, "qty": 2 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Guitar Brando",
+          "totalUnits": 5,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Seafoam", "strings": 6, "qty": 1 },
+            { "model": "SX", "colour": "Maya Blue", "strings": 7, "qty": 1 },
+            { "model": "SX", "colour": "Raspberry", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Blood Camo", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Zjon Guitar Store",
+          "totalUnits": 3,
+          "lineItems": [
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Desert Camo", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Guitar Candy",
+          "totalUnits": 2,
+          "lineItems": [
+            { "model": "DC", "colour": "Max Black", "strings": 6, "qty": 1 },
+            { "model": "DC", "colour": "Max Black", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Guitar Hiro",
+          "totalUnits": 1,
+          "lineItems": [
+            { "model": "Genesis", "colour": "Opaline", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Musifacts",
+          "totalUnits": 1,
+          "lineItems": [
+            { "model": "DC", "colour": "Desert Camo", "strings": 6, "qty": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "run": "Run 20",
+      "dataStatus": "totals_only",
+      "dealers": [
+        { "dealer": "Kikutani", "totalUnits": 25, "lineItems": [] },
+        { "dealer": "Klundert", "totalUnits": 12, "lineItems": [] },
+        { "dealer": "Musik Alley", "totalUnits": 12, "lineItems": [] },
+        { "dealer": "Guitar Brando", "totalUnits": 8, "lineItems": [] },
+        { "dealer": "Zjon's", "totalUnits": 7, "lineItems": [] },
+        { "dealer": "Guitar Hiro", "totalUnits": 6, "lineItems": [] }
+      ]
+    },
+    {
+      "run": "Run 21",
+      "dataStatus": "complete",
+      "dealers": [
+        {
+          "dealer": "Kikutani",
+          "totalUnits": 14,
+          "lineItems": [
+            { "model": "ONE", "colour": "Hydra", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Amber", "strings": 7, "qty": 2 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 7, "qty": 1 },
+            { "model": "ONE", "colour": "Viper", "strings": 7, "qty": 1 },
+            { "model": "SC Goliath", "colour": "SeaFoam", "strings": 8, "qty": 1 },
+            { "model": "SC Goliath", "colour": "Black", "strings": 6, "qty": 1 },
+            { "model": "SC Goliath", "colour": "Black", "strings": 7, "qty": 2 },
+            { "model": "SC Goliath", "colour": "White/Black", "strings": 8, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 6, "qty": 2 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Holiday",
+          "totalUnits": 1,
+          "lineItems": [
+            { "model": "ONE", "colour": "Deep Sea", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Zjon's",
+          "totalUnits": 3,
+          "lineItems": [
+            { "model": "ONE", "colour": "Amber", "strings": 7, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 6, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Drop Dee",
+          "totalUnits": 11,
+          "lineItems": [
+            { "model": "ONE", "colour": "Hazard", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Hazard", "strings": 7, "qty": 1 },
+            { "model": "ONE", "colour": "Amber", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Amber", "strings": 7, "qty": 1 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Viper", "strings": 6, "qty": 1 },
+            { "model": "SC Goliath", "colour": "SeaFoam", "strings": 7, "qty": 1 },
+            { "model": "SC Goliath", "colour": "Violet Myst", "strings": 7, "qty": 1 },
+            { "model": "SC Goliath", "colour": "Black", "strings": 8, "qty": 1 },
+            { "model": "SC Goliath", "colour": "White/Black", "strings": 8, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Musik Alley",
+          "totalUnits": 5,
+          "lineItems": [
+            { "model": "ONE", "colour": "Acid", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Hydra", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 6, "qty": 1 },
+            { "model": "SC Goliath", "colour": "White/Black", "strings": 6, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Guitar Brando",
+          "totalUnits": 8,
+          "lineItems": [
+            { "model": "ONE", "colour": "Hydra", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Amber", "strings": 7, "qty": 1 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 6, "qty": 1 },
+            { "model": "ONE", "colour": "Deep Sea", "strings": 7, "qty": 1 },
+            { "model": "ONE", "colour": "Viper", "strings": 7, "qty": 1 },
+            { "model": "SC Goliath", "colour": "Black", "strings": 8, "qty": 1 },
+            { "model": "SC Goliath", "colour": "White/Black", "strings": 7, "qty": 1 },
+            { "model": "Metal V", "colour": "Black Limba", "strings": 6, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Live Louder",
+          "totalUnits": 0,
+          "lineItems": []
+        }
+      ]
+    },
+    {
+      "run": "TX Shark",
+      "dataStatus": "complete",
+      "dealers": [
+        {
+          "dealer": "Drop Dee",
+          "totalUnits": 6,
+          "lineItems": [
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Musik Alley",
+          "totalUnits": 6,
+          "lineItems": [
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Guitar Factory",
+          "totalUnits": 6,
+          "lineItems": [
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Zjon's",
+          "totalUnits": 4,
+          "lineItems": [
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Poison Berry", "strings": 7, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 6, "qty": 1 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 7, "qty": 1 }
+          ]
+        },
+        {
+          "dealer": "Kikutani",
+          "totalUnits": 12,
+          "lineItems": [
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 6, "qty": 3 },
+            { "model": "TX Shark", "colour": "Candy Floss", "strings": 7, "qty": 3 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 6, "qty": 3 },
+            { "model": "TX Shark", "colour": "Riff Tide", "strings": 7, "qty": 3 }
+          ]
+        }
+      ]
+    }
+  ]
+}

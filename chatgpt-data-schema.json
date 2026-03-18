@@ -1,0 +1,226 @@
+{
+  "_instructions": "Use this schema to generate or validate data for the Ormsby Guitars Dealer Portal. Create realistic sample data (guitars, specs, options, pricing, etc.) that conforms to these types. All monetary amounts are in AUD unless noted. Dates are ISO 8601 strings. IMPORTANT: Do NOT generate availability data (quantities, state, etc.)—availability will be loaded separately. Do NOT generate image URLs—use empty arrays [] for all image fields (guitar.images and option value .images); images will be loaded later.",
+  "_omitWhenGenerating": ["availability"],
+  "_collections": ["users", "accounts", "accountRequests", "tiers", "guitars", "availability", "prices", "orders", "orders/{orderId}/lines", "adminSettings", "fxRates"],
+
+  "GuitarSpecs": {
+    "description": "Guitar specifications (all optional). Used as base specs on each guitar; option overrides can merge on top for display.",
+    "fields": {
+      "body": { "type": "string", "description": "Body material and construction" },
+      "neck": { "type": "string", "description": "Neck material" },
+      "neckShape": { "type": "string", "description": "Neck shape profile" },
+      "fretboard": { "type": "string", "description": "Fretboard material" },
+      "fretboardRadius": { "type": "string", "description": "Fretboard radius" },
+      "fretwire": { "type": "string", "description": "Fretwire type" },
+      "inlay": { "type": "string", "description": "Inlay type" },
+      "sideDots": { "type": "string", "description": "Side dot material/color" },
+      "hardwareColour": { "type": "string", "description": "Hardware color" },
+      "bridgeMachineheads": { "type": "string", "description": "Bridge and machine heads" },
+      "electronics": { "type": "string", "description": "Electronics configuration" },
+      "pickups": { "type": "string", "description": "Pickup configuration" },
+      "finish": { "type": "string", "description": "Finish type" },
+      "scale": { "type": "string", "description": "Scale length e.g. Six string: 25.5 - 27.5, Seven: 25.5 - 27.8, Eight: 25.5 - 28.2" },
+      "other": { "type": "string", "description": "Additional specifications" },
+      "scaleLength": { "type": "string", "description": "Legacy scale field" },
+      "frets": { "type": "number", "description": "Fret count" },
+      "stringCount": { "type": "number | number[]", "description": "String count" },
+      "bridgePickup": { "type": "string", "description": "Bridge pickup" },
+      "neckPickup": { "type": "string", "description": "Neck pickup" },
+      "hardware": { "type": "string", "description": "General hardware" },
+      "notes": { "type": "string", "description": "General notes" }
+    }
+  },
+
+  "GuitarOptionValue": {
+    "description": "One selectable value within a product option (e.g. a color or fret count).",
+    "fields": {
+      "valueId": { "type": "string", "required": true, "example": "black", "description": "Unique id e.g. black, 24, tremolo" },
+      "label": { "type": "string", "required": true, "example": "Satin Black", "description": "Display name" },
+      "priceAdjustment": { "type": "number", "description": "Dealer price adjustment in AUD" },
+      "rrpAdjustment": { "type": "number", "description": "RRP adjustment in AUD" },
+      "images": { "type": "string[]", "omit": true, "description": "Option-specific images; leave empty []—loaded later" },
+      "skuSuffix": { "type": "string", "example": "-BLK", "description": "Suffix added to base SKU" }
+    }
+  },
+
+  "GuitarOption": {
+    "description": "A product option dealers must/can choose (e.g. Colour, Fret Count, Bridge).",
+    "fields": {
+      "optionId": { "type": "string", "required": true, "example": "color", "description": "Unique id e.g. color, frets, strings, bridge" },
+      "label": { "type": "string", "required": true, "example": "Colour", "description": "Display name" },
+      "type": { "type": "string", "required": true, "enum": ["select", "number"], "description": "select = dropdown, number = numeric input" },
+      "required": { "type": "boolean", "required": true, "description": "Must select this option" },
+      "values": { "type": "array of GuitarOptionValue", "required": true, "description": "Available choices" }
+    }
+  },
+
+  "GuitarDoc": {
+    "collection": "guitars",
+    "description": "A guitar product in the catalog.",
+    "fields": {
+      "sku": { "type": "string", "required": true, "example": "HYPE-6", "description": "Base SKU template" },
+      "name": { "type": "string", "required": true, "example": "Hype GTR 7", "description": "Product name" },
+      "series": { "type": "string", "required": true, "example": "Hype Series", "description": "Series name" },
+      "run": { "type": "string", "description": "Run information" },
+      "etaDelivery": { "type": "string", "description": "ETA delivery text" },
+      "images": { "type": "string[]", "required": true, "useEmptyArray": true, "description": "Default images; use []—loaded later" },
+      "specs": { "type": "GuitarSpecs", "required": true, "description": "Base specifications object" },
+      "options": { "type": "array of GuitarOption", "description": "Options dealers can choose" },
+      "status": { "type": "string", "required": true, "enum": ["ACTIVE", "INACTIVE"] },
+      "createdAt": { "type": "string", "required": true, "format": "ISO 8601" },
+      "updatedAt": { "type": "string", "required": true, "format": "ISO 8601" }
+    }
+  },
+
+  "AvailabilityDoc": {
+    "collection": "availability",
+    "documentId": "guitarId",
+    "_omitWhenGenerating": true,
+    "description": "Stock availability per guitar. Do not generate—availability will be loaded later.",
+    "fields": {
+      "state": { "type": "string", "required": true, "enum": ["IN_STOCK", "PREORDER", "BATCH"] },
+      "qtyAvailable": { "type": "number", "required": true },
+      "qtyAllocated": { "type": "number", "required": true },
+      "etaDate": { "type": "string | null", "format": "ISO 8601" },
+      "batchName": { "type": "string | null" }
+    }
+  },
+
+  "PricesDoc": {
+    "collection": "prices",
+    "documentId": "guitarId",
+    "description": "Pricing per guitar. Currency typically AUD; basePrice is dealer price, rrp is recommended retail.",
+    "fields": {
+      "guitarId": { "type": "string", "required": true },
+      "currency": { "type": "string", "required": true, "example": "AUD" },
+      "basePrice": { "type": "number", "required": true, "description": "Dealer price (AUD)" },
+      "rrp": { "type": "number", "description": "Recommended retail price (AUD)" },
+      "quantityBreaks": {
+        "type": "array",
+        "item": { "minQuantity": "number", "maxQuantity": "number (optional)", "price": "number" }
+      },
+      "tierPrices": { "type": "object", "description": "tierId -> price (AUD)" },
+      "accountOverrides": { "type": "object", "description": "accountId -> price (AUD)" },
+      "promo": {
+        "type": "object",
+        "fields": { "price": "number", "validFrom": "ISO 8601", "validTo": "ISO 8601" }
+      }
+    }
+  },
+
+  "TierDoc": {
+    "collection": "tiers",
+    "description": "Pricing tier (e.g. by volume).",
+    "fields": {
+      "name": { "type": "string", "required": true },
+      "description": { "type": "string" },
+      "minQuantity": { "type": "number", "description": "Min order qty for this tier" },
+      "maxQuantity": { "type": "number", "description": "Max order qty; null = unlimited" },
+      "order": { "type": "number", "description": "Sort order (lower = higher priority)" }
+    }
+  },
+
+  "AccountDoc": {
+    "collection": "accounts",
+    "description": "Dealer/distributor account.",
+    "fields": {
+      "name": { "type": "string", "required": true },
+      "tierId": { "type": "string", "required": true },
+      "currency": { "type": "string", "required": true, "example": "AUD" },
+      "territory": { "type": "string" },
+      "terms": { "type": "string" }
+    }
+  },
+
+  "UserDoc": {
+    "collection": "users",
+    "documentId": "uid",
+    "description": "User profile; role/accountId come from Firebase Auth custom claims.",
+    "fields": {
+      "role": { "type": "string", "required": true, "enum": ["ADMIN", "DISTRIBUTOR", "DEALER"] },
+      "accountId": { "type": "string", "required": true },
+      "email": { "type": "string", "required": true },
+      "name": { "type": "string", "required": true }
+    }
+  },
+
+  "OrderDoc": {
+    "collection": "orders",
+    "description": "Purchase order.",
+    "fields": {
+      "accountId": { "type": "string", "required": true },
+      "createdByUid": { "type": "string", "required": true },
+      "status": { "type": "string", "required": true, "enum": ["DRAFT", "SUBMITTED", "APPROVED", "IN_PRODUCTION", "SHIPPED", "COMPLETED", "CANCELLED"] },
+      "currency": { "type": "string", "required": true },
+      "totals": { "type": "object", "fields": { "subtotal": "number", "currency": "string" } },
+      "shippingAddress": {
+        "type": "object",
+        "fields": { "company": "string", "line1": "string", "line2": "string", "city": "string", "region": "string", "postalCode": "string", "country": "string" }
+      },
+      "poNumber": { "type": "string" },
+      "notes": { "type": "string" },
+      "termsAccepted": { "type": "object", "fields": { "accepted": "boolean", "acceptedAt": "ISO 8601" } },
+      "createdAt": { "type": "string", "format": "ISO 8601" },
+      "updatedAt": { "type": "string", "format": "ISO 8601" },
+      "invoiceUrl": { "type": "string" },
+      "invoiceUploadedAt": { "type": "string" },
+      "etaDate": { "type": "string" }
+    }
+  },
+
+  "OrderLineDoc": {
+    "collection": "orders/{orderId}/lines",
+    "description": "Single line item on an order.",
+    "fields": {
+      "guitarId": { "type": "string", "required": true },
+      "sku": { "type": "string", "required": true },
+      "name": { "type": "string", "required": true },
+      "qty": { "type": "number", "required": true },
+      "unitPrice": { "type": "number", "required": true },
+      "lineTotal": { "type": "number", "required": true },
+      "selectedOptions": { "type": "object", "description": "optionId -> valueId" }
+    }
+  },
+
+  "exampleGuitar": {
+    "description": "Example guitar document for ChatGPT to mimic. Use images: [] and omit availability; those are loaded later.",
+    "sku": "HYPE-7",
+    "name": "Hype GTR 7",
+    "series": "Hype Series",
+    "run": "2025 Run 1",
+    "etaDelivery": "Q2 2025",
+    "images": [],
+    "specs": {
+      "body": "Swamp Ash",
+      "neck": "Maple, bolt-on",
+      "neckShape": "C profile",
+      "fretboard": "Ebony",
+      "fretboardRadius": "350mm",
+      "fretwire": "Jumbo",
+      "inlay": "Dot",
+      "sideDots": "White",
+      "hardwareColour": "Black",
+      "bridgeMachineheads": "Hipshot bridge, locking tuners",
+      "electronics": "Volume, tone, 3-way",
+      "pickups": "Dual humbucker",
+      "finish": "Satin poly",
+      "scale": "25.5 - 27.8 (multi-scale)",
+      "other": ""
+    },
+    "options": [
+      {
+        "optionId": "colour",
+        "label": "Colour",
+        "type": "select",
+        "required": true,
+        "values": [
+          { "valueId": "opaline", "label": "Opaline", "skuSuffix": "-opaline", "priceAdjustment": 0, "rrpAdjustment": 0 },
+          { "valueId": "black", "label": "Satin Black", "skuSuffix": "-BLK", "priceAdjustment": 0, "rrpAdjustment": 0 }
+        ]
+      }
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2025-01-15T00:00:00.000Z",
+    "updatedAt": "2025-01-15T00:00:00.000Z"
+  }
+}

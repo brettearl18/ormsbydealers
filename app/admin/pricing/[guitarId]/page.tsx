@@ -26,6 +26,7 @@ export default function EditPricingPage({
   const [formData, setFormData] = useState<{
     currency: string;
     basePrice: string;
+    rrp: string;
     quantityBreaks: Array<{ minQuantity: string; maxQuantity: string; price: string }>;
     tierPrices: Record<string, string>;
     accountOverrides: Record<string, string>;
@@ -35,8 +36,9 @@ export default function EditPricingPage({
       validTo: string;
     } | null;
   }>({
-    currency: "USD",
+    currency: "AUD",
     basePrice: "",
+    rrp: "",
     quantityBreaks: [],
     tierPrices: {},
     accountOverrides: {},
@@ -111,8 +113,9 @@ export default function EditPricingPage({
           : [];
 
         setFormData({
-          currency: pricesData.currency || "USD",
+          currency: pricesData.currency || "AUD",
           basePrice: pricesData.basePrice?.toString() || "",
+          rrp: pricesData.rrp?.toString() || "",
           quantityBreaks,
           tierPrices,
           accountOverrides,
@@ -127,8 +130,9 @@ export default function EditPricingPage({
       } else {
         // Initialize with default values if no price document exists
         setFormData({
-          currency: "USD",
+          currency: "AUD",
           basePrice: "",
+          rrp: "",
           quantityBreaks: [],
           tierPrices: {},
           accountOverrides: {},
@@ -238,12 +242,23 @@ export default function EditPricingPage({
         };
       }
 
+      const rrpValue = formData.rrp.trim();
+      const rrp = rrpValue ? parseFloat(rrpValue) : undefined;
+      if (rrpValue && (isNaN(rrp!) || rrp! < 0)) {
+        setError("RRP must be a valid positive number or empty");
+        setSaving(false);
+        return;
+      }
+
       // Build prices document, only including fields that have values
       const pricesDoc: PricesDoc = {
         guitarId,
         currency: formData.currency,
         basePrice,
       };
+      if (rrp != null && !isNaN(rrp) && rrp >= 0) {
+        pricesDoc.rrp = rrp;
+      }
 
       // Only add optional fields if they have values (Firestore doesn't accept undefined)
       if (quantityBreaks.length > 0) {
@@ -378,33 +393,57 @@ export default function EditPricingPage({
                 }
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
               >
+                <option value="AUD">AUD (A$)</option>
                 <option value="USD">USD ($)</option>
                 <option value="EUR">EUR (€)</option>
                 <option value="GBP">GBP (£)</option>
-                <option value="AUD">AUD (A$)</option>
                 <option value="CAD">CAD (C$)</option>
               </select>
+              <p className="mt-1 text-xs text-neutral-400">
+                Base currency is AUD. All pricing should be entered in Australian Dollars.
+              </p>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-white">
-                Base Price <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.basePrice}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, basePrice: e.target.value }))
-                }
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
-                placeholder="0.00"
-                required
-              />
-              <p className="mt-1 text-xs text-neutral-400">
-                This is the default price used if no tier or account override is set
-              </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white">
+                  Dealer Price (AUD) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.basePrice}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, basePrice: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
+                  placeholder="0.00"
+                  required
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  Default dealer price; tier/account overrides may apply
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white">
+                  RRP (AUD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.rrp}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, rrp: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  Recommended retail price for display to dealers
+                </p>
+              </div>
             </div>
 
             {/* Quantity-Based Pricing */}

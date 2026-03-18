@@ -98,7 +98,9 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
   // Get user's accountId and currency from custom claims
   const token = await admin.auth().getUser(uid);
   const accountId = token.customClaims?.accountId as string | undefined;
-  const currency = (token.customClaims?.currency as string | undefined) || "USD";
+  // Base currency is AUD - orders are stored in dealer's currency for display
+  // but pricing is always in AUD
+  const currency = (token.customClaims?.currency as string | undefined) || "AUD";
 
   if (!accountId) {
     throw new functions.https.HttpsError(
@@ -280,8 +282,9 @@ export const refreshFxRates = functions.https.onCall(
         );
       }
 
+      // Fetch FX rates with AUD as base currency
       const response = await fetch(
-        `https://openexchangerates.org/api/latest.json?app_id=${appId}`,
+        `https://openexchangerates.org/api/latest.json?app_id=${appId}&base=AUD`,
       );
 
       if (!response.ok) {

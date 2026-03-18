@@ -195,6 +195,25 @@ export default function GuitarDetailPage({
     return base * rate;
   }, [effectivePrice.price, fxRates, user?.currency, guitar, selectedOptions]);
 
+  // Display RRP (base RRP + option RRP adjustments) for dealer reference
+  const displayRrp = useMemo(() => {
+    const baseRrp = prices?.rrp;
+    if (baseRrp == null) return null;
+    let rrp = baseRrp;
+    if (guitar?.options) {
+      for (const option of guitar.options) {
+        const selectedValueId = selectedOptions[option.optionId];
+        if (selectedValueId) {
+          const selectedValue = option.values.find((v) => v.valueId === selectedValueId);
+          if (selectedValue?.rrpAdjustment != null) {
+            rrp += selectedValue.rrpAdjustment;
+          }
+        }
+      }
+    }
+    return rrp;
+  }, [prices?.rrp, guitar?.options, selectedOptions]);
+
   // Calculate converted price for selected display currency
   const convertedPrice = useMemo(() => {
     if (!fxRates || !selectedDisplayCurrency || !guitar || !effectivePrice.price) return null;
@@ -571,10 +590,10 @@ export default function GuitarDetailPage({
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Base Price</span>
+                <span className="text-sm text-neutral-400">Dealer Price (AUD)</span>
                 <PriceTag
                   price={effectivePrice.price}
-                  currency={user.currency}
+                  currency="AUD"
                   note={
                     effectivePrice.source === "PROMO"
                       ? "Promo price"
@@ -586,6 +605,13 @@ export default function GuitarDetailPage({
                   }
                 />
               </div>
+
+              {displayRrp != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-400">RRP (AUD)</span>
+                  <PriceTag price={displayRrp} currency="AUD" note="Recommended retail" />
+                </div>
+              )}
               
               {/* Option price adjustments */}
               {guitar.options &&
@@ -623,9 +649,9 @@ export default function GuitarDetailPage({
                             }
                           >
                             {selectedValue.priceAdjustment > 0 ? "+" : ""}
-                            {new Intl.NumberFormat("en-US", {
+                            {new Intl.NumberFormat("en-AU", {
                               style: "currency",
-                              currency: user.currency || "USD",
+                              currency: "AUD",
                             }).format(selectedValue.priceAdjustment)}
                           </span>
                         </div>
@@ -668,9 +694,9 @@ export default function GuitarDetailPage({
                                   : "font-semibold"
                               }
                             >
-                              {new Intl.NumberFormat("en-US", {
+                              {new Intl.NumberFormat("en-AU", {
                                 style: "currency",
-                                currency: user.currency || "USD",
+                                currency: "AUD",
                               }).format(break_.price)}
                               {isCurrentBreak && (
                                 <span className="ml-1.5 text-[10px]">(current)</span>
@@ -687,26 +713,26 @@ export default function GuitarDetailPage({
               <div className="space-y-2 border-t border-white/10 pt-3">
                 <div className="flex items-baseline justify-between">
                   <span className="text-base font-semibold text-white">
-                    Unit Price
+                    Unit Price (AUD)
                   </span>
                   <div className="flex flex-col items-end">
                     <span className="text-2xl font-bold text-accent">
-                      {new Intl.NumberFormat("en-US", {
+                      {new Intl.NumberFormat("en-AU", {
                         style: "currency",
-                        currency: user.currency || "USD",
+                        currency: "AUD",
                       }).format(calculateFinalPrice() || effectivePrice.price || 0)}
                     </span>
                     {/* Converted Price Estimate */}
                     {convertedPrice &&
                       selectedDisplayCurrency &&
-                      selectedDisplayCurrency !== user?.currency && (
+                      selectedDisplayCurrency !== "AUD" && (
                         <span className="mt-1 text-sm text-neutral-400">
                           ≈ {new Intl.NumberFormat("en-US", {
                             style: "currency",
                             currency: selectedDisplayCurrency,
                           }).format(convertedPrice)}{" "}
                           <span className="text-xs text-neutral-500">
-                            (estimate)
+                            (estimate in {selectedDisplayCurrency})
                           </span>
                         </span>
                       )}
@@ -719,26 +745,26 @@ export default function GuitarDetailPage({
                 <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3">
                   <div className="flex items-baseline justify-between">
                     <span className="text-sm font-semibold text-white">
-                      Total ({quantity} {quantity === 1 ? "item" : "items"})
+                      Total ({quantity} {quantity === 1 ? "item" : "items"}) (AUD)
                     </span>
                     <div className="flex flex-col items-end">
                       <span className="text-xl font-bold text-accent">
-                        {new Intl.NumberFormat("en-US", {
+                        {new Intl.NumberFormat("en-AU", {
                           style: "currency",
-                          currency: user.currency || "USD",
+                          currency: "AUD",
                         }).format(calculateFinalPrice()! * quantity)}
                       </span>
                       {/* Converted Total Estimate */}
                       {convertedPrice &&
                         selectedDisplayCurrency &&
-                        selectedDisplayCurrency !== user?.currency && (
+                        selectedDisplayCurrency !== "AUD" && (
                           <span className="mt-1 text-sm text-neutral-300">
                             ≈ {new Intl.NumberFormat("en-US", {
                               style: "currency",
                               currency: selectedDisplayCurrency,
                             }).format(convertedPrice * quantity)}{" "}
                             <span className="text-xs text-neutral-400">
-                              (estimate)
+                              (estimate in {selectedDisplayCurrency})
                             </span>
                           </span>
                         )}

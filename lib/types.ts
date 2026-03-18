@@ -78,7 +78,8 @@ export interface GuitarOption {
 export interface GuitarOptionValue {
   valueId: string; // e.g., "black", "24", "tremolo"
   label: string; // Display name, e.g., "Satin Black", "24 Frets", "Tremolo Bridge"
-  priceAdjustment?: number; // Additional cost for this option
+  priceAdjustment?: number; // Dealer price adjustment (AUD)
+  rrpAdjustment?: number; // RRP adjustment (AUD)
   images?: string[]; // Option-specific images
   skuSuffix?: string; // Added to base SKU, e.g., "-BLK", "-24"
 }
@@ -120,7 +121,8 @@ export interface QuantityBreak {
 export interface PricesDoc {
   guitarId: string;
   currency: string;
-  basePrice: number;
+  basePrice: number; // Dealer price (AUD)
+  rrp?: number; // Recommended retail price (AUD)
   quantityBreaks?: QuantityBreak[]; // Quantity-based pricing breaks
   tierPrices?: Record<string, number | undefined>;
   accountOverrides?: Record<string, number | undefined>;

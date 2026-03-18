@@ -90,7 +90,7 @@ export default function AdminPricingPage() {
       ? guitars
       : guitars.filter((g) => g.prices?.currency === currencyFilter);
 
-  const formatPrice = (price: number | null, currency: string = "USD") => {
+  const formatPrice = (price: number | null, currency: string = "AUD") => {
     if (price == null) return "—";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -237,7 +237,7 @@ export default function AdminPricingPage() {
                   {/* Pricing Info */}
                   <div className="space-y-2 rounded-xl bg-white/5 p-3">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-neutral-400">Base Price</span>
+                      <span className="text-xs text-neutral-400">Dealer Price (AUD)</span>
                       <span className="text-sm font-medium text-white">
                         {formatPrice(
                           guitar.prices?.basePrice ?? null,
@@ -245,6 +245,14 @@ export default function AdminPricingPage() {
                         )}
                       </span>
                     </div>
+                    {guitar.prices?.rrp != null && (
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-neutral-400">RRP (AUD)</span>
+                        <span className="text-sm font-medium text-white">
+                          {formatPrice(guitar.prices.rrp, guitar.prices.currency)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-baseline justify-between border-t border-white/10 pt-2">
                       <span className="text-xs font-semibold text-neutral-300">
                         Effective Price

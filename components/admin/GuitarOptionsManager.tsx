@@ -221,7 +221,7 @@ export function GuitarOptionsManager({ options, onChange }: Props) {
                           key={value.valueId}
                           className="rounded-lg border border-white/5 bg-black/30 p-3"
                         >
-                          <div className="grid gap-3 sm:grid-cols-4">
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                             <div>
                               <label className="mb-1 block text-xs font-medium text-neutral-400">
                                 Label *
@@ -257,15 +257,34 @@ export function GuitarOptionsManager({ options, onChange }: Props) {
                             </div>
                             <div>
                               <label className="mb-1 block text-xs font-medium text-neutral-400">
-                                Price Adjustment ($)
+                                Dealer Price Adjustment (AUD)
                               </label>
                               <input
                                 type="number"
                                 step="0.01"
-                                value={value.priceAdjustment || ""}
+                                value={value.priceAdjustment ?? ""}
                                 onChange={(e) =>
                                   handleUpdateValue(optionIndex, valueIndex, {
                                     priceAdjustment: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : undefined,
+                                  })
+                                }
+                                className="w-full rounded border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white placeholder:text-neutral-600 outline-none transition focus:border-accent/50"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-neutral-400">
+                                RRP Adjustment (AUD)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={value.rrpAdjustment ?? ""}
+                                onChange={(e) =>
+                                  handleUpdateValue(optionIndex, valueIndex, {
+                                    rrpAdjustment: e.target.value
                                       ? parseFloat(e.target.value)
                                       : undefined,
                                   })

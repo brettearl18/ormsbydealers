@@ -1,0 +1,489 @@
+{
+  "_comment": "Seed file for guitars. Run: node scripts/seedGuitarsFromJson.mjs",
+  "guitars": [
+    {
+      "sku": "R19-GENESIS",
+      "name": "Genesis (Run 19)",
+      "series": "Run 19",
+      "run": "Run 19",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Alder",
+        "neck": "Roasted Maple, Bolt-On",
+        "neckShape": "19.0 @ 1st - 20.8 @ 17th revised D shape",
+        "fretboard": "Roasted Maple",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Mother of Pearl, O shape",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Chrome",
+        "bridgeMachineheads": "2 Point Tremolo; Ormsby Locking Machineheads",
+        "electronics": "500k Volume, 500k Tone with 5 way blade switch",
+        "pickups": "Hot Rock Humbucker (Bridge), De La Creme Neck Humbucker",
+        "finish": "Gloss body and satin neck",
+        "scale": "Six: 25.5 - 26.15\"; Seven: 25.5 - 26.25\"; Right hand only",
+        "other": "Pearloid pickguard",
+        "stringCount": [6, 7]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "black", "label": "Black", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BLK" },
+            { "valueId": "cream", "label": "Cream", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-CRM" },
+            { "valueId": "opaline", "label": "Opaline", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-OPL" },
+            { "valueId": "seafoam", "label": "Seafoam", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-SFM" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+    {
+      "sku": "R19-SX",
+      "name": "SX (Run 19)",
+      "series": "Run 19",
+      "run": "Run 19",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Mahogany with carved Rock Maple top and Flame Maple veneer",
+        "neck": "3pce Laminated Rock Maple, Set Neck",
+        "neckShape": "19.0 @ 1st - 21 @ 17th revised D shape",
+        "fretboard": "Ebony",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Mother of Pearl, Z pattern",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Black",
+        "bridgeMachineheads": "Ormsby Custom Multiscale; Ormsby Locking Machineheads",
+        "electronics": "500k Volume, 500k Tone with Push/Pull + 3 way toggle switch",
+        "pickups": "Hot Rock Humbucker (Bridge), Old School Neck Humbucker",
+        "finish": "Gloss body/headstock and satin neck",
+        "scale": "Six: 25.5 - 27.5\"; Seven: 25.5 - 27.8\"; Right hand only",
+        "other": "Includes Gig Bag",
+        "stringCount": [6, 7]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "raspberry", "label": "Raspberry", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-RSP" },
+            { "valueId": "splice", "label": "Splice", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-SPL" },
+            { "valueId": "natural-flame", "label": "Natural Flame", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-NFL" },
+            { "valueId": "maya-blue", "label": "Maya Blue", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-MYB" },
+            { "valueId": "dahlia-black", "label": "Dahlia Black", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-DHB" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+    {
+      "sku": "R19-DC",
+      "name": "DC (Run 19)",
+      "series": "Run 19",
+      "run": "Run 19",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Swamp Ash (38mm thick)",
+        "neck": "Laminated Rock Maple with Padouk centre, Bolt-On",
+        "neckShape": "Consistent 18mm flat D shape (Dino specs)",
+        "fretboard": "Ebony",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "None",
+        "sideDots": "Block Style",
+        "hardwareColour": "Black (or Gold for Desert Camo)",
+        "bridgeMachineheads": "Ormsby Custom Multiscale; Ormsby Locking Machineheads",
+        "electronics": "1x Volume, 9v reverse mount side jack; O-ring knob",
+        "pickups": "Seymour Duncan Machete (Bridge)",
+        "finish": "Satin body and neck",
+        "scale": "26.5 - 27.5\"; Right hand only",
+        "other": "Forward strap pin; COA signed by Perry + Dino; Includes Hard Case",
+        "stringCount": 7
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "desert-camo", "label": "Desert Camo", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-DSC" },
+            { "valueId": "blood-camo", "label": "Blood Camo", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BLC" },
+            { "valueId": "max-black", "label": "Max Black", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-MBK" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+
+    {
+      "sku": "R20-GYRO",
+      "name": "Gyro (Run 20)",
+      "series": "Run 20",
+      "run": "Run 20",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Alder",
+        "neck": "Laminated Rock Maple (painted), Set Neck",
+        "neckShape": "19.0 @ 1st - 21 @ 17th D shape",
+        "fretboard": "Richlite",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Alloy Rings, Z pattern",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Gold",
+        "bridgeMachineheads": "Ormsby Custom Multiscale Floating Tremolo; Ormsby Locking Machineheads",
+        "electronics": "500k Volume and tone with a 5 way selector",
+        "pickups": "Hot Rock Humbucker (Bridge), De La Creme Neck Humbucker",
+        "finish": "Gloss Body & Headstock, satin neck",
+        "scale": "Six: 25.5 - 26.5\"; Seven: 25.5 - 26.7\"",
+        "other": "Heel adjustable truss rod; Includes Gig Bag",
+        "stringCount": [6, 7]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "green-red-chameleon", "label": "Green/Red Chameleon", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-GRC" },
+            { "valueId": "blue-red-chameleon", "label": "Blue/Red Chameleon", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BRC" },
+            { "valueId": "red-gold-chameleon", "label": "Red/Gold Chameleon", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-RGC" },
+            { "valueId": "azzurro-california", "label": "Azzurro California", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-AZC" },
+            { "valueId": "white-pearl", "label": "White Pearl", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-WPL" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+    {
+      "sku": "R20-HYPE",
+      "name": "Hype (Run 20)",
+      "series": "Run 20",
+      "run": "Run 20",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Mahogany with a Poplar Burl veneer",
+        "neck": "Laminated Rock Maple, Set Neck",
+        "neckShape": "19.0 @ 1st - 21 @ 17th D shape",
+        "fretboard": "Ebony",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Pearl Dots; Z pattern",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Black",
+        "bridgeMachineheads": "Ormsby Custom Multiscale; Ormsby Locking Machineheads",
+        "electronics": "500k Volume and tone with a 5 way selector",
+        "pickups": "Hot Rock Humbucker (Bridge), De La Creme Neck Humbucker",
+        "finish": "Satin Finish",
+        "scale": "Six: 25.5 - 27.5\"; Seven: 25.5 - 27.8\"; Eight: 25.5 - 28.3\"",
+        "other": "",
+        "stringCount": [6, 7, 8]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "dahlia-black", "label": "Dahlia Black", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-DHB" },
+            { "valueId": "purrpull", "label": "PurrPull", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-PRP" },
+            { "valueId": "red-dead", "label": "Red Dead", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-RDD" },
+            { "valueId": "venom", "label": "Venom", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-VNM" },
+            { "valueId": "sophia-blue", "label": "Sophia Blue", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-SPB" },
+            { "valueId": "beto-blue", "label": "Beto Blue", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BTB" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" },
+            { "valueId": "8", "label": "8-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-8" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+
+    {
+      "sku": "R21-THE-ONE",
+      "name": "The One (Run 21)",
+      "series": "Run 21",
+      "run": "Run 21",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Mahogany with a Maple cap (44mm thick)",
+        "neck": "5 piece Maple / Wenge, Set Neck",
+        "neckShape": "Consistent 19mm D shape",
+        "fretboard": "Ebony",
+        "fretboardRadius": "20 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Pearl Dots; Z pattern (4mm)",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Black",
+        "bridgeMachineheads": "Floyd Rose Original 1000 Series; Ormsby Locking Machineheads",
+        "electronics": "Master Volume, Master Tone (Push/Pull for voicing), 5 way blade switch",
+        "pickups": "Fishman Fluence Modern Ceramic (Bridge), Fishman Fluence Modern Alnico (Neck)",
+        "finish": "Gloss body / Satin neck",
+        "scale": "Six: 25.5 - 26.15\"; Seven: 25.5 - 26.25\"; Right hand only",
+        "other": "Carbon fibre reinforcing rods; Revised strap button location; Hard Case Included",
+        "stringCount": [6, 7]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "acid", "label": "Acid", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-ACD" },
+            { "valueId": "magenta", "label": "Magenta", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-MAG" },
+            { "valueId": "hazard", "label": "Hazard", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-HAZ" },
+            { "valueId": "violent-crumble", "label": "Violent Crumble", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-VCR" },
+            { "valueId": "deep-sea", "label": "Deep Sea", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-DPS" },
+            { "valueId": "hydra", "label": "Hydra", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-HYD" },
+            { "valueId": "amber", "label": "Amber", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-AMB" },
+            { "valueId": "viper", "label": "Viper", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-VIP" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+    {
+      "sku": "R21-SC-GOLIATH",
+      "name": "Single Cut Goliath (Run 21)",
+      "series": "Run 21",
+      "run": "Run 21",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Swamp Ash with textured grain finish",
+        "neck": "Roasted Maple, Set Neck",
+        "neckShape": "19.0 @ 1st - 21 @ 17th D shape",
+        "fretboard": "Ebony",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Pearl Dots; Z pattern + Ormsby @ 12th",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Black",
+        "bridgeMachineheads": "Ormsby Custom Headless Multiscale; Ormsby Headless Locking Nuts",
+        "electronics": "500k Volume, 500k Tone + 5 way blade switch",
+        "pickups": "Hot Rock Humbucker (Bridge), De La Creme Neck Humbucker",
+        "finish": "Satin body + neck",
+        "scale": "Six: 25.5 - 27.5\"; Seven: 25.5 - 27.8\"; Eight: 25.5 - 28.3\"; Right hand only",
+        "other": "Includes Gig Bag",
+        "stringCount": [6, 7, 8]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "white-black", "label": "White/Black", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-WB" },
+            { "valueId": "black-satin", "label": "Black Satin", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BKS" },
+            { "valueId": "violet-mist", "label": "Violet Mist", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-VMT" },
+            { "valueId": "seafoam", "label": "Seafoam", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-SFM" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" },
+            { "valueId": "8", "label": "8-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-8" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+    {
+      "sku": "R21-METAL-V",
+      "name": "Metal V (Run 21)",
+      "series": "Run 21",
+      "run": "Run 21",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "Black Limba",
+        "neck": "Wenge, Set Neck",
+        "neckShape": "19.0 @ 1st - 21 @ 17th D shape",
+        "fretboard": "Wenge",
+        "fretboardRadius": "16 inch",
+        "fretwire": "Jumbo Stainless Steel",
+        "inlay": "Pearl Dots; Z pattern",
+        "sideDots": "Glow In The Dark",
+        "hardwareColour": "Black",
+        "bridgeMachineheads": "Ormsby Custom Multiscale; Ormsby Locking Machineheads",
+        "electronics": "500k Volume, 500k Tone with push/pull + 3 way toggle switch",
+        "pickups": "Blizzard Ceramic Humbucker (Bridge), Concordia Neck Humbucker",
+        "finish": "Gloss with satin neck",
+        "scale": "Six: 25.5 - 27.5\"; Seven: 25.5 - 27.8\"; Right hand only",
+        "other": "Includes Gig Bag",
+        "stringCount": [6, 7]
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "black-limba", "label": "Black Limba", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-BL" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    },
+
+    {
+      "sku": "TX-SHARK",
+      "name": "TX Shark",
+      "series": "TX Series",
+      "run": "TX Shark",
+      "etaDelivery": "",
+      "images": [],
+      "specs": {
+        "body": "",
+        "neck": "",
+        "neckShape": "",
+        "fretboard": "",
+        "fretboardRadius": "",
+        "fretwire": "",
+        "inlay": "",
+        "sideDots": "",
+        "hardwareColour": "",
+        "bridgeMachineheads": "",
+        "electronics": "",
+        "pickups": "",
+        "finish": "",
+        "scale": "",
+        "other": "",
+        "notes": "TX Shark specs to be confirmed; populate when available."
+      },
+      "options": [
+        {
+          "optionId": "colour",
+          "label": "Colour",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "poison-berry", "label": "Poison Berry", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-PB" },
+            { "valueId": "candy-floss", "label": "Candy Floss", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-CF" },
+            { "valueId": "riff-tide", "label": "Riff Tide", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-RT" }
+          ]
+        },
+        {
+          "optionId": "strings",
+          "label": "Strings",
+          "type": "select",
+          "required": true,
+          "values": [
+            { "valueId": "6", "label": "6-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-6" },
+            { "valueId": "7", "label": "7-String", "priceAdjustment": 0, "rrpAdjustment": 0, "skuSuffix": "-7" }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "createdAt": "2026-03-18T00:00:00.000Z",
+      "updatedAt": "2026-03-18T00:00:00.000Z"
+    }
+  ]
+}
