@@ -356,7 +356,7 @@ export const createDealerAuthUser = functions.https.onCall(
 
       const { accountId, email, companyName, contactName, accountType } =
         data as CreateDealerAuthUserRequest;
-      const sendEmail = data.sendEmail !== false;
+      const shouldSendEmail = data.sendEmail !== false;
 
       if (!accountId || !email || !companyName?.trim()) {
         throw new functions.https.HttpsError(
@@ -418,7 +418,7 @@ export const createDealerAuthUser = functions.https.onCall(
       );
 
       let emailSent = false;
-      if (sendEmail) {
+      if (shouldSendEmail) {
         try {
           const mailgun = getMailgunConfig();
           const smtp = mailgun ? null : await getSmtpSettings().catch(() => null);

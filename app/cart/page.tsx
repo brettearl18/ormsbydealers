@@ -34,11 +34,11 @@ export default function CartPage() {
       return;
     }
 
-    async function fetchPricingData() {
+    async function fetchPricingData(accountIdArg: string) {
       setLoadingPrices(true);
       try {
         const uniqueGuitarIds = Array.from(new Set(items.map((item) => item.guitarId)));
-        const accountSnap = await getDoc(doc(db, "accounts", accountId));
+        const accountSnap = await getDoc(doc(db, "accounts", accountIdArg));
         if (accountSnap.exists()) {
           setAccount({ id: accountSnap.id, ...accountSnap.data() } as AccountDoc & { id: string });
         } else {
@@ -64,7 +64,7 @@ export default function CartPage() {
       }
     }
 
-    fetchPricingData();
+    fetchPricingData(accountId);
   }, [items, user?.accountId]);
 
   // Dealer price = RRP × (1 - account.discountPercent/100)
