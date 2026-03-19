@@ -120,13 +120,14 @@ export default function GuitarDetailPage({
   }, [guitarId, user, authLoading, router]);
 
   // Dealer price = RRP × (1 - account.discountPercent/100)
-  const effectivePrice = useMemo(() => {
+  type PriceSource = "BASE" | "PROMO" | "ACCOUNT_OVERRIDE" | "TIER" | null;
+  const effectivePrice = useMemo((): { price: number | null; source: PriceSource } => {
     if (!prices || !guitar) return { price: null, source: null };
     const rrp = getRRPForVariant(prices, guitar.options ?? null, selectedOptions);
     if (rrp == null) return { price: null, source: null };
     const discountPercent = account?.discountPercent ?? 0;
     const price = getDealerPriceFromRRP(rrp, discountPercent);
-    return { price, source: "BASE" as const };
+    return { price, source: "BASE" };
   }, [prices, guitar, selectedOptions, account?.discountPercent]);
 
   // Update display images when options change - prioritize option-specific images
