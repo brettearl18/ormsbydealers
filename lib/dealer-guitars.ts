@@ -78,7 +78,7 @@ export async function fetchDealerGuitars(params: {
       ? (pricesSnap.data() as PricesDoc)
       : null;
 
-    const rrp = getRRPForVariant(prices ?? undefined, guitar.options ?? null, null);
+    const rrp = getRRPForVariant(prices ?? null, guitar.options ?? null, null);
     const value = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : null;
 
     results.push({
