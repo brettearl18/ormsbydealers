@@ -791,10 +791,10 @@ export default function AccountDetailPage({
                       contactEmail: (account as AccountDoc).contactEmail ?? "",
                       contactPhone: (account as AccountDoc).contactPhone ?? "",
                       billingAddress: (account as AccountDoc).billingAddress
-                        ? { ...(account as AccountDoc).billingAddress }
+                        ? ({ ...(account as AccountDoc).billingAddress } as ShippingAddress)
                         : undefined,
                       shippingAddress: (account as AccountDoc).shippingAddress
-                        ? { ...(account as AccountDoc).shippingAddress }
+                        ? ({ ...(account as AccountDoc).shippingAddress } as ShippingAddress)
                         : undefined,
                       notes: (account as AccountDoc).notes ?? "",
                     });
