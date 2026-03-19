@@ -121,7 +121,7 @@ export default function GuitarDetailPage({
 
   // Dealer price = RRP × (1 - account.discountPercent/100)
   const effectivePrice = useMemo(() => {
-    if (!prices || !guitar) return { price: null, source: null as const };
+    if (!prices || !guitar) return { price: null, source: null };
     const rrp = getRRPForVariant(prices, guitar.options ?? null, selectedOptions);
     if (rrp == null) return { price: null, source: null };
     const discountPercent = account?.discountPercent ?? 0;
