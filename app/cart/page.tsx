@@ -78,7 +78,7 @@ export default function CartPage() {
     return items.map((item) => {
       const prices = pricesMap.get(item.guitarId);
       const guitar = guitarsMap.get(item.guitarId);
-      const rrp = getRRPForVariant(prices, guitar?.options ?? null, item.selectedOptions ?? null);
+      const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, item.selectedOptions ?? null);
       if (rrp == null) return item;
       const unitPrice = getDealerPriceFromRRP(rrp, discountPercent);
       return { ...item, unitPrice };
