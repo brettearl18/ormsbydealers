@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useState, useEffect, useRef } from "react";
+import { FormEvent, useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { useCart } from "@/lib/cart-context";
+import { useCart, CartItem } from "@/lib/cart-context";
 import { httpsCallable } from "firebase/functions";
 import { functions, db, auth } from "@/lib/firebase";
 import { getIdToken } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { AccountDoc, AdminSettingsDoc } from "@/lib/types";
+import { AccountDoc, AdminSettingsDoc, PricesDoc, GuitarDoc } from "@/lib/types";
+import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import Link from "next/link";
 import { OrderReviewItem } from "@/components/checkout/OrderReviewItem";
 import { XMarkIcon } from "@heroicons/react/24/outline";
@@ -30,6 +31,8 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountDoc | null>(null);
+  const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
+  const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -41,10 +44,10 @@ export default function CheckoutPage() {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const termsScrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch account information to pre-fill company name
+  // Fetch account, prices, and guitars for checkout (dealer price = RRP × (1 - discount%))
   useEffect(() => {
-    async function fetchAccount() {
-      if (!user?.accountId) {
+    async function fetchData() {
+      if (!user?.accountId || items.length === 0) {
         setLoadingAccount(false);
         return;
       }
@@ -54,24 +57,52 @@ export default function CheckoutPage() {
         if (accountDoc.exists()) {
           const accountData = accountDoc.data() as AccountDoc;
           setAccount(accountData);
-          // Pre-fill company name from account
-          if (accountData.name) {
-            setCompany(accountData.name);
-          }
+          if (accountData.name) setCompany(accountData.name);
+        } else {
+          setAccount(null);
         }
+
+        const uniqueGuitarIds = Array.from(new Set(items.map((i) => i.guitarId)));
+        const prices = new Map<string, PricesDoc>();
+        const guitars = new Map<string, GuitarDoc>();
+        for (const guitarId of uniqueGuitarIds) {
+          const [priceSnap, guitarSnap] = await Promise.all([
+            getDoc(doc(db, "prices", guitarId)),
+            getDoc(doc(db, "guitars", guitarId)),
+          ]);
+          if (priceSnap.exists()) prices.set(guitarId, priceSnap.data() as PricesDoc);
+          if (guitarSnap.exists()) guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
+        }
+        setPricesMap(prices);
+        setGuitarsMap(guitars);
       } catch (err) {
-        console.error("Error fetching account:", err);
+        console.error("Error fetching checkout data:", err);
       } finally {
         setLoadingAccount(false);
       }
     }
 
-    if (!authLoading && user?.accountId) {
-      fetchAccount();
+    if (!authLoading && user?.accountId && items.length > 0) {
+      fetchData();
     } else if (!authLoading) {
       setLoadingAccount(false);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, items.length]);
+
+  const discountPercent = account?.discountPercent ?? 0;
+  const itemsWithPrices: CartItem[] = useMemo(() => {
+    return items.map((item) => {
+      const prices = pricesMap.get(item.guitarId);
+      const guitar = guitarsMap.get(item.guitarId);
+      const rrp = getRRPForVariant(prices, guitar?.options ?? null, item.selectedOptions ?? null);
+      const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : item.unitPrice;
+      return { ...item, unitPrice };
+    });
+  }, [items, pricesMap, guitarsMap, discountPercent]);
+  const checkoutSubtotal = useMemo(
+    () => itemsWithPrices.reduce((sum, i) => sum + i.unitPrice * i.qty, 0),
+    [itemsWithPrices],
+  );
 
   // Fetch terms template from admin settings
   useEffect(() => {
@@ -206,13 +237,13 @@ export default function CheckoutPage() {
       
       const submitOrderFn = httpsCallable(functions, "submitOrder");
       const result = await submitOrderFn({
-        cartItems: items.map((item) => ({
+        cartItems: itemsWithPrices.map((item) => ({
           guitarId: item.guitarId,
           sku: item.sku,
           name: item.name,
           qty: item.qty,
           unitPrice: item.unitPrice,
-          selectedOptions: item.selectedOptions, // Include selected options
+          selectedOptions: item.selectedOptions,
         })),
         shippingAddress: {
           company: company || undefined,
@@ -478,7 +509,7 @@ export default function CheckoutPage() {
 
           {/* Order Items with Details */}
           <div className="space-y-4">
-            {items.map((item, index) => (
+            {itemsWithPrices.map((item, index) => (
               <OrderReviewItem key={`${item.guitarId}-${JSON.stringify(item.selectedOptions || {})}-${index}`} item={item} index={index} />
             ))}
           </div>
@@ -494,7 +525,7 @@ export default function CheckoutPage() {
                 <span className="text-neutral-400">Subtotal</span>
                 <span className="font-medium text-white">
                   {user.currency === "USD" ? "$" : user.currency}{" "}
-                  {subtotal.toLocaleString("en-US", {
+                  {checkoutSubtotal.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}

@@ -153,9 +153,8 @@ export default function EditPricingPage({
         });
       }
 
-      // String count = absolute price per variant; colour = optional adjustment added to base
+      // RRP only (dealer price = RRP × (1 - account.discountPercent/100)). String count = RRP per variant; colour = optional RRP adj.
       if (guitarData.options && guitarData.options.length > 0) {
-        const basePrice = pricesData?.basePrice ?? 0;
         const baseRrp = pricesData?.rrp ?? 0;
         const isStrings = (o: { optionId: string; label: string }) =>
           o.optionId === "strings" || o.label.toLowerCase().includes("string");
@@ -174,14 +173,13 @@ export default function EditPricingPage({
                 optionId: opt.optionId,
                 label: opt.label,
                 values: opt.values.map((v) => {
-                  const adj = v.priceAdjustment ?? 0;
                   const rrpAdj = v.rrpAdjustment ?? 0;
                   return {
                     valueId: v.valueId,
                     label: v.label,
-                    priceAdjustment: v.priceAdjustment != null ? v.priceAdjustment.toString() : "",
+                    priceAdjustment: "",
                     rrpAdjustment: v.rrpAdjustment != null ? v.rrpAdjustment.toString() : "",
-                    dealerPrice: (basePrice + adj).toString(),
+                    dealerPrice: (baseRrp + rrpAdj).toString(), // used only to mark "has strings" for section visibility
                     rrp: (baseRrp + rrpAdj).toString(),
                   };
                 }),
@@ -193,7 +191,7 @@ export default function EditPricingPage({
               values: opt.values.map((v) => ({
                 valueId: v.valueId,
                 label: v.label,
-                priceAdjustment: v.priceAdjustment != null ? v.priceAdjustment.toString() : "",
+                priceAdjustment: "",
                 rrpAdjustment: v.rrpAdjustment != null ? v.rrpAdjustment.toString() : "",
               })),
             };
@@ -219,25 +217,19 @@ export default function EditPricingPage({
       let rrp: number | undefined;
 
       if (variantPrices.length > 0) {
-        // String count is the determining factor: base = first *string* variant's price (not colour)
+        // RRP only: first *string* variant's RRP
         const stringsFormOpt = variantPrices.find((o) => o.values[0]?.dealerPrice != null);
         const firstVal = stringsFormOpt?.values[0];
-        const firstDealer = firstVal?.dealerPrice?.trim();
         const firstRrpStr = firstVal?.rrp?.trim();
-        basePrice = firstDealer ? parseFloat(firstDealer) : 0;
+        basePrice = 0; // no longer used; dealer price = RRP × (1 - account.discountPercent/100)
         rrp = firstRrpStr ? parseFloat(firstRrpStr) : undefined;
-        if (isNaN(basePrice) || basePrice < 0) {
-          setError("Enter a valid dealer price for at least one string variant");
+        if (firstRrpStr && (isNaN(rrp!) || rrp! < 0)) {
+          setError("Enter a valid RRP for at least one string variant");
           setSaving(false);
           return;
         }
       } else {
-        basePrice = parseFloat(formData.basePrice);
-        if (isNaN(basePrice) || basePrice < 0) {
-          setError("Base price must be a valid positive number");
-          setSaving(false);
-          return;
-        }
+        basePrice = 0;
         const rrpValue = formData.rrp.trim();
         rrp = rrpValue ? parseFloat(rrpValue) : undefined;
       }
@@ -331,11 +323,11 @@ export default function EditPricingPage({
         return;
       }
 
-      // Build prices document, only including fields that have values
+      // Build prices document (RRP only; dealer price = RRP × account discount%)
       const pricesDoc: PricesDoc = {
         guitarId,
         currency: formData.currency,
-        basePrice,
+        basePrice: 0,
       };
       if (rrp != null && !isNaN(rrp) && rrp >= 0) {
         pricesDoc.rrp = rrp;
@@ -369,37 +361,29 @@ export default function EditPricingPage({
           if (!formOpt) return opt;
           const out: GuitarOption = { ...opt, values: [] };
           if (isStringsForm(formOpt)) {
-            const firstDealer = formOpt.values[0]?.dealerPrice?.trim();
             const firstRrp = formOpt.values[0]?.rrp?.trim();
-            const formBaseDealer = firstDealer ? parseFloat(firstDealer) : 0;
             const formBaseRrp = firstRrp ? parseFloat(firstRrp) : 0;
             out.values = opt.values.map((v) => {
               const formVal = formOpt.values.find((f) => f.valueId === v.valueId);
               if (!formVal) return v;
-              const dealerStr = formVal.dealerPrice?.trim();
               const rrpStr = formVal.rrp?.trim();
-              const dealerNum = dealerStr ? parseFloat(dealerStr) : NaN;
               const rrpNum = rrpStr ? parseFloat(rrpStr) : NaN;
-              const priceAdjustment = !isNaN(dealerNum) ? dealerNum - formBaseDealer : undefined;
               const rrpAdjustment = !isNaN(rrpNum) ? rrpNum - formBaseRrp : undefined;
               const outV: typeof v = { ...v };
-              if (typeof priceAdjustment === "number") outV.priceAdjustment = priceAdjustment;
               if (typeof rrpAdjustment === "number") outV.rrpAdjustment = rrpAdjustment;
+              outV.priceAdjustment = 0; // unused; dealer price = RRP × (1 - discount%)
               return outV;
             });
           } else {
             out.values = opt.values.map((v) => {
               const formVal = formOpt.values.find((f) => f.valueId === v.valueId);
               if (!formVal) return v;
-              const priceStr = formVal.priceAdjustment?.trim();
               const rrpStr = formVal.rrpAdjustment?.trim();
-              const priceNum = priceStr ? parseFloat(priceStr) : NaN;
               const rrpNum = rrpStr ? parseFloat(rrpStr) : NaN;
-              const priceAdjustment = !isNaN(priceNum) ? priceNum : undefined;
               const rrpAdjustment = !isNaN(rrpNum) ? rrpNum : undefined;
               const outV: typeof v = { ...v };
-              if (typeof priceAdjustment === "number") outV.priceAdjustment = priceAdjustment;
               if (typeof rrpAdjustment === "number") outV.rrpAdjustment = rrpAdjustment;
+              outV.priceAdjustment = 0;
               return outV;
             });
           }
@@ -584,10 +568,10 @@ export default function EditPricingPage({
               <div className="space-y-8">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white">
-                    String count pricing
+                    String count RRP (AUD)
                   </label>
                   <p className="mb-4 text-xs text-neutral-400">
-                    Set dealer price and RRP for each string count. This is the base price.
+                    Set RRP for each string count. Dealer price is calculated as RRP × (1 − discount %) from each account.
                   </p>
                   <div className="space-y-6">
                     {variantPrices
@@ -603,11 +587,10 @@ export default function EditPricingPage({
                               {opt.label}
                             </h3>
                             <div className="overflow-x-auto">
-                              <table className="w-full min-w-[400px] text-sm">
+                              <table className="w-full min-w-[280px] text-sm">
                                 <thead>
                                   <tr className="border-b border-white/10 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
                                     <th className="pb-2 pr-4">Variant</th>
-                                    <th className="pb-2 pr-4 w-40">Dealer price (AUD)</th>
                                     <th className="pb-2 w-40">RRP (AUD)</th>
                                   </tr>
                                 </thead>
@@ -619,24 +602,6 @@ export default function EditPricingPage({
                                     >
                                       <td className="py-2 pr-4 font-medium text-white">
                                         {v.label}
-                                      </td>
-                                      <td className="py-2 pr-4">
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          min="0"
-                                          value={v.dealerPrice ?? ""}
-                                          onChange={(e) =>
-                                            updateVariantAbsolute(
-                                              idx,
-                                              valueIndex,
-                                              "dealerPrice",
-                                              e.target.value
-                                            )
-                                          }
-                                          placeholder="0.00"
-                                          className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
-                                        />
                                       </td>
                                       <td className="py-2">
                                         <input
@@ -676,10 +641,10 @@ export default function EditPricingPage({
                 ) && (
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-white">
-                      Colour adjustments (optional)
+                      Colour RRP adjustments (optional)
                     </label>
                     <p className="mb-4 text-xs text-neutral-400">
-                      Add an extra amount to the base price for specific colours. Leave 0 if the colour has no price difference.
+                      Add to RRP for specific colours. Leave 0 if no difference.
                     </p>
                     <div className="space-y-6">
                       {variantPrices
@@ -702,11 +667,10 @@ export default function EditPricingPage({
                                 {opt.label}
                               </h3>
                               <div className="overflow-x-auto">
-                                <table className="w-full min-w-[400px] text-sm">
+                                <table className="w-full min-w-[280px] text-sm">
                                   <thead>
                                     <tr className="border-b border-white/10 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
                                       <th className="pb-2 pr-4">Variant</th>
-                                      <th className="pb-2 pr-4 w-40">Dealer adj. (AUD)</th>
                                       <th className="pb-2 w-40">RRP adj. (AUD)</th>
                                     </tr>
                                   </thead>
@@ -718,23 +682,6 @@ export default function EditPricingPage({
                                       >
                                         <td className="py-2 pr-4 font-medium text-white">
                                           {v.label}
-                                        </td>
-                                        <td className="py-2 pr-4">
-                                          <input
-                                            type="number"
-                                            step="0.01"
-                                            value={v.priceAdjustment ?? ""}
-                                            onChange={(e) =>
-                                              updateVariantAdjustment(
-                                                idx,
-                                                valueIndex,
-                                                "priceAdjustment",
-                                                e.target.value
-                                              )
-                                            }
-                                            placeholder="0"
-                                            className="w-full rounded border border-white/10 bg-white/5 px-3 py-1.5 text-white focus:border-accent focus:outline-none placeholder:text-neutral-500"
-                                          />
                                         </td>
                                         <td className="py-2">
                                           <input
@@ -766,46 +713,25 @@ export default function EditPricingPage({
                 )}
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">
-                    Dealer Price (AUD) <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.basePrice}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, basePrice: e.target.value }))
-                    }
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
-                    placeholder="0.00"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-neutral-400">
-                    Default dealer price; tier/account overrides may apply
-                  </p>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-white">
-                    RRP (AUD)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.rrp}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, rrp: e.target.value }))
-                    }
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
-                    placeholder="0.00"
-                  />
-                  <p className="mt-1 text-xs text-neutral-400">
-                    Recommended retail price for display to dealers
-                  </p>
-                </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white">
+                  RRP (AUD) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.rrp}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, rrp: e.target.value }))
+                  }
+                  className="w-full max-w-xs rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-accent focus:outline-none"
+                  placeholder="0.00"
+                  required
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  Recommended retail price. Dealer price = RRP × (1 − account discount %).
+                </p>
               </div>
             )}
 

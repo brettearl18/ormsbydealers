@@ -7,6 +7,7 @@ import {
   AdminBrandingSettings,
   AdminNotificationSettings,
   AdminSmtpSettings,
+  AdminMailgunSettings,
   AdminEmailTemplateSettings,
 } from "@/lib/types";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -42,6 +43,7 @@ export default function AdminSettingsPage() {
     useState<AdminNotificationSettings>(DEFAULT_NOTIFICATIONS);
   const [emailTemplates, setEmailTemplates] =
     useState<AdminEmailTemplateSettings | null>(null);
+  const [mailgun, setMailgun] = useState<AdminMailgunSettings | null>(null);
   const [staffNotes, setStaffNotes] = useState<string>("");
   const [refreshingFxRates, setRefreshingFxRates] = useState(false);
   const [fxRatesStatus, setFxRatesStatus] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export default function AdminSettingsPage() {
           setNotifications({ ...DEFAULT_NOTIFICATIONS, ...(data.notifications || {}) });
           setSmtp(data.smtp ?? null);
           setEmailTemplates(data.emailTemplates ?? null);
+          setMailgun(data.mailgun ?? null);
           setStaffNotes(data.staffNotes ?? "");
           setTermsTemplate(data.termsTemplate ?? "");
         } else {
@@ -92,6 +95,7 @@ export default function AdminSettingsPage() {
         branding,
         notifications,
         smtp: smtp ?? null,
+        mailgun: mailgun ?? null,
         emailTemplates: emailTemplates ?? null,
         staffNotes: staffNotes || "",
         termsTemplate: termsTemplate || "",
@@ -331,12 +335,53 @@ export default function AdminSettingsPage() {
               </div>
             </div>
 
-            {/* Right column: SMTP, notifications, email templates */}
+            {/* Right column: Mailgun API, SMTP fallback, notifications, email templates */}
             <div className="space-y-6">
-              {/* SMTP */}
+              {/* Mailgun API (primary) */}
+              <div className="glass-strong rounded-3xl p-6 shadow-xl">
+                <h2 className="text-lg font-semibold text-white">Mailgun (API)</h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Sending uses the Mailgun API when configured. Set in Firebase:{" "}
+                  <code className="rounded bg-white/10 px-1 text-xs">functions:config:set mailgun.api_key="KEY" mailgun.domain="mg.yourdomain.com"</code>
+                </p>
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="text-xs text-accent underline-offset-2 hover:underline"
+                    onClick={() =>
+                      setMailgun((prev) => (prev ? null : { fromEmail: "" }))
+                    }
+                  >
+                    {mailgun ? "Clear" : "Set from address"}
+                  </button>
+                </div>
+                {mailgun && (
+                  <div className="mt-3">
+                    <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                      From email (optional)
+                    </label>
+                    <input
+                      type="email"
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                      value={mailgun.fromEmail ?? ""}
+                      onChange={(e) =>
+                        setMailgun((prev) =>
+                          prev ? { ...prev, fromEmail: e.target.value || undefined } : null,
+                        )
+                      }
+                      placeholder="noreply@yourdomain.com"
+                    />
+                    <p className="mt-1 text-xs text-neutral-500">
+                      If empty, defaults to noreply@ your Mailgun domain.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* SMTP (fallback when Mailgun not set) */}
               <div className="glass-strong rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-semibold text-white">SMTP / Email gateway</h2>
+                  <h2 className="text-lg font-semibold text-white">SMTP (fallback)</h2>
                   <button
                     type="button"
                     className="text-xs text-accent underline-offset-2 hover:underline"
@@ -358,8 +403,7 @@ export default function AdminSettingsPage() {
                   </button>
                 </div>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Used for outbound dealer emails (order confirmations, status updates, and
-                  notifications).
+                  Only used if Mailgun API key is not set. For Mailgun, use the API above.
                 </p>
 
                 {smtp && (

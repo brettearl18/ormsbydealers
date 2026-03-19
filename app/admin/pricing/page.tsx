@@ -4,20 +4,18 @@ import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { GuitarDoc, PricesDoc, TierDoc } from "@/lib/types";
+import { GuitarDoc, PricesDoc } from "@/lib/types";
 import Link from "next/link";
-import { computeEffectivePrice } from "@/lib/pricing";
 
 interface GuitarWithPricing extends GuitarDoc {
   id: string;
   prices: PricesDoc | null;
-  effectivePrice: number | null;
-  priceSource: string | null;
+  /** Base RRP for list display; variant RRP may differ by options */
+  baseRrp: number | null;
 }
 
 export default function AdminPricingPage() {
   const [guitars, setGuitars] = useState<GuitarWithPricing[]>([]);
-  const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [currencyFilter, setCurrencyFilter] = useState<string>("all");
 
@@ -28,10 +26,9 @@ export default function AdminPricingPage() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [guitarsSnap, pricesSnap, tiersSnap] = await Promise.all([
+      const [guitarsSnap, pricesSnap] = await Promise.all([
         getDocs(collection(db, "guitars")),
         getDocs(collection(db, "prices")),
-        getDocs(collection(db, "tiers")),
       ]);
 
       const guitarsData = guitarsSnap.docs.map((doc) => ({
@@ -45,30 +42,15 @@ export default function AdminPricingPage() {
         pricesMap.set(doc.id, priceData);
       });
 
-      const tiersData = tiersSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Array<TierDoc & { id: string }>;
-      setTiers(tiersData);
-
-      // Compute effective prices for display (using first tier as example)
       const guitarsWithPricing: GuitarWithPricing[] = guitarsData.map(
         (guitar) => {
           const prices = pricesMap.get(guitar.id) || null;
-          const effectivePrice = prices
-            ? computeEffectivePrice({
-                prices,
-                accountId: "preview",
-                tierId: tiersData.length > 0 ? tiersData[0].id : "",
-                now: new Date(),
-              })
-            : { price: null, source: null };
+          const baseRrp = prices?.rrp ?? null;
 
           return {
             ...guitar,
             prices,
-            effectivePrice: effectivePrice.price,
-            priceSource: effectivePrice.source,
+            baseRrp,
           };
         },
       );
@@ -108,7 +90,7 @@ export default function AdminPricingPage() {
               Manage Pricing
             </h1>
             <p className="mt-2 text-sm text-neutral-400">
-              Set base prices, tier pricing, account overrides, and promotions
+              Set RRP (AUD) per guitar; dealer price = RRP × (1 − account discount %)
             </p>
           </div>
         </div>
@@ -200,27 +182,7 @@ export default function AdminPricingPage() {
                     )}
                   </div>
 
-                  {/* Price Source Badge */}
-                  {guitar.priceSource && (
-                    <div className="absolute top-3 right-3">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold backdrop-blur-sm ${
-                          guitar.priceSource === "PROMO"
-                            ? "bg-purple-500/90 text-white"
-                            : guitar.priceSource === "ACCOUNT_OVERRIDE"
-                            ? "bg-blue-500/90 text-white"
-                            : guitar.priceSource === "TIER"
-                            ? "bg-green-500/90 text-white"
-                            : guitar.priceSource === "BASE"
-                            ? "bg-neutral-500/90 text-white"
-                            : "bg-red-500/90 text-white"
-                        }`}
-                      >
-                        {guitar.priceSource}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                  </div>
 
                 {/* Content */}
                 <div className="relative z-10 flex flex-1 flex-col gap-3 p-5">
@@ -234,39 +196,20 @@ export default function AdminPricingPage() {
                     <p className="text-xs text-neutral-500">SKU: {guitar.sku}</p>
                   </div>
 
-                  {/* Pricing Info */}
+                  {/* Pricing Info — RRP only; dealer price = RRP × (1 − account discount %) */}
                   <div className="space-y-2 rounded-xl bg-white/5 p-3">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-neutral-400">Dealer Price (AUD)</span>
-                      <span className="text-sm font-medium text-white">
-                        {formatPrice(
-                          guitar.prices?.basePrice ?? null,
-                          guitar.prices?.currency,
-                        )}
-                      </span>
-                    </div>
-                    {guitar.prices?.rrp != null && (
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xs text-neutral-400">RRP (AUD)</span>
-                        <span className="text-sm font-medium text-white">
-                          {formatPrice(guitar.prices.rrp, guitar.prices.currency)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-baseline justify-between border-t border-white/10 pt-2">
-                      <span className="text-xs font-semibold text-neutral-300">
-                        Effective Price
-                      </span>
+                      <span className="text-xs text-neutral-400">RRP (AUD)</span>
                       <span className="text-lg font-bold text-accent">
                         {formatPrice(
-                          guitar.effectivePrice,
+                          guitar.baseRrp ?? guitar.prices?.rrp ?? null,
                           guitar.prices?.currency,
                         )}
                       </span>
                     </div>
-                    {/* Variant costs (string count) */}
+                    {/* Variant RRP (string count) */}
                     {guitar.options &&
-                      guitar.prices?.basePrice != null &&
+                      guitar.prices?.rrp != null &&
                       (() => {
                         const stringsOption = guitar.options.find(
                           (o) =>
@@ -275,16 +218,15 @@ export default function AdminPricingPage() {
                         );
                         if (!stringsOption || stringsOption.values.length === 0)
                           return null;
-                        const base = guitar.prices.basePrice;
                         return (
                           <div className="mt-2 border-t border-white/10 pt-2">
                             <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
-                              Variant cost
+                              RRP by variant
                             </p>
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                               {stringsOption.values.map((v) => {
-                                const adj = v.priceAdjustment ?? 0;
-                                const variantPrice = base + adj;
+                                const rrpAdj = v.rrpAdjustment ?? 0;
+                                const variantRrp = guitar.prices!.rrp! + rrpAdj;
                                 return (
                                   <span
                                     key={v.valueId}
@@ -293,7 +235,7 @@ export default function AdminPricingPage() {
                                     {v.label}:{" "}
                                     <span className="font-medium text-white">
                                       {formatPrice(
-                                        variantPrice,
+                                        variantRrp,
                                         guitar.prices?.currency,
                                       )}
                                     </span>
@@ -308,20 +250,6 @@ export default function AdminPricingPage() {
                       <p className="text-[10px] text-neutral-500">
                         Currency: {guitar.prices.currency}
                       </p>
-                    )}
-                  </div>
-
-                  {/* Pricing Details */}
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    {guitar.prices?.tierPrices && (
-                      <span className="rounded-full bg-green-500/20 px-2 py-1 text-green-400">
-                        {Object.keys(guitar.prices.tierPrices).length} Tier{guitar.prices.tierPrices && Object.keys(guitar.prices.tierPrices).length !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {guitar.prices?.accountOverrides && (
-                      <span className="rounded-full bg-blue-500/20 px-2 py-1 text-blue-400">
-                        {Object.keys(guitar.prices.accountOverrides).length} Override{guitar.prices.accountOverrides && Object.keys(guitar.prices.accountOverrides).length !== 1 ? "s" : ""}
-                      </span>
                     )}
                   </div>
 

@@ -9,12 +9,13 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import {
+  AccountDoc,
   AvailabilityDoc,
   GuitarDoc,
   PricesDoc,
   AvailabilityState,
 } from "./types";
-import { computeEffectivePrice } from "./pricing";
+import { getRRPForVariant, getDealerPriceFromRRP } from "./pricing";
 
 export interface DealerGuitar {
   id: string;
@@ -35,9 +36,14 @@ export interface DealerGuitar {
 
 export async function fetchDealerGuitars(params: {
   accountId: string;
-  tierId: string;
-  currency: string;
+  tierId?: string;
+  currency?: string;
 }): Promise<DealerGuitar[]> {
+  const accountSnap = await getDoc(doc(db, "accounts", params.accountId));
+  const discountPercent = (accountSnap.exists()
+    ? (accountSnap.data() as AccountDoc).discountPercent
+    : undefined) ?? 0;
+
   const guitarsRef = collection(db, "guitars");
   const q = query(
     guitarsRef,
@@ -72,12 +78,8 @@ export async function fetchDealerGuitars(params: {
       ? (pricesSnap.data() as PricesDoc)
       : null;
 
-    const effective = computeEffectivePrice({
-      prices,
-      accountId: params.accountId,
-      tierId: params.tierId,
-      now: new Date(),
-    });
+    const rrp = getRRPForVariant(prices ?? undefined, guitar.options ?? null, null);
+    const value = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : null;
 
     results.push({
       id: guitarId,
@@ -91,8 +93,8 @@ export async function fetchDealerGuitars(params: {
         batchName: availability.batchName ?? null,
       },
       price: {
-        value: effective.price,
-        source: effective.source,
+        value,
+        source: discountPercent > 0 ? "DISCOUNT" : "RRP",
       },
     });
   }

@@ -36,11 +36,11 @@ export default function DealerDashboard() {
       setFetching(true);
       setError(null);
       try {
-        if (!user?.accountId || !user?.tierId || !user?.currency) return;
+        if (!user?.accountId) return;
         const data = await fetchDealerGuitars({
           accountId: user.accountId,
-          tierId: user.tierId,
-          currency: user.currency,
+          tierId: user.tierId ?? undefined,
+          currency: user.currency ?? undefined,
         });
         if (!cancelled) {
           setGuitars(data);
@@ -59,7 +59,7 @@ export default function DealerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.accountId, user?.tierId, user?.currency]);
+  }, [user?.accountId]);
 
   useEffect(() => {
     if (!loading && !user) {

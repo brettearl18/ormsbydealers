@@ -8,14 +8,14 @@ import { useEffect, useState, useMemo } from "react";
 import { CartItemSkeleton } from "@/components/LoadingSkeleton";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PricesDoc, TierDoc, GuitarDoc } from "@/lib/types";
-import { computeEffectivePrice } from "@/lib/pricing";
+import { PricesDoc, TierDoc, GuitarDoc, AccountDoc } from "@/lib/types";
+import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 
 export default function CartPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { items, updateQty, removeItem, subtotal } = useCart();
-  const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
+  const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loadingPrices, setLoadingPrices] = useState(true);
@@ -26,9 +26,9 @@ export default function CartPage() {
     }
   }, [user, authLoading, router]);
 
-  // Fetch tiers, prices, and guitars for all cart items
+  // Fetch account (for discount %), prices, and guitars for all cart items
   useEffect(() => {
-    if (!user?.accountId || !user?.tierId || items.length === 0) {
+    if (!user?.accountId || items.length === 0) {
       setLoadingPrices(false);
       return;
     }
@@ -36,34 +36,24 @@ export default function CartPage() {
     async function fetchPricingData() {
       setLoadingPrices(true);
       try {
-        // Fetch all tiers
-        const tiersSnap = await getDocs(collection(db, "tiers"));
-        const tiersData = tiersSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Array<TierDoc & { id: string }>;
-        setTiers(tiersData);
-
-        // Fetch prices and guitars for all unique guitars in cart
         const uniqueGuitarIds = Array.from(new Set(items.map((item) => item.guitarId)));
+        const accountSnap = await getDoc(doc(db, "accounts", user.accountId!));
+        if (accountSnap.exists()) {
+          setAccount({ id: accountSnap.id, ...accountSnap.data() } as AccountDoc & { id: string });
+        } else {
+          setAccount(null);
+        }
+
         const prices = new Map<string, PricesDoc>();
         const guitars = new Map<string, GuitarDoc>();
-        
         for (const guitarId of uniqueGuitarIds) {
           const [priceSnap, guitarSnap] = await Promise.all([
             getDoc(doc(db, "prices", guitarId)),
             getDoc(doc(db, "guitars", guitarId)),
           ]);
-          
-          if (priceSnap.exists()) {
-            prices.set(guitarId, priceSnap.data() as PricesDoc);
-          }
-          
-          if (guitarSnap.exists()) {
-            guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
-          }
+          if (priceSnap.exists()) prices.set(guitarId, priceSnap.data() as PricesDoc);
+          if (guitarSnap.exists()) guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
         }
-        
         setPricesMap(prices);
         setGuitarsMap(guitars);
       } catch (err) {
@@ -74,59 +64,25 @@ export default function CartPage() {
     }
 
     fetchPricingData();
-  }, [items, user?.accountId, user?.tierId]);
+  }, [items, user?.accountId]);
 
-  // Calculate current prices for each cart item based on quantity
+  // Dealer price = RRP × (1 - account.discountPercent/100)
   const itemsWithCurrentPrices = useMemo(() => {
-    if (!user?.accountId || !user?.tierId || loadingPrices) {
+    if (!user?.accountId || loadingPrices) {
       return items;
     }
+
+    const discountPercent = account?.discountPercent ?? 0;
 
     return items.map((item) => {
       const prices = pricesMap.get(item.guitarId);
       const guitar = guitarsMap.get(item.guitarId);
-      
-      if (!prices) {
-        return item; // Keep original price if no pricing data
-      }
-
-      // Recalculate effective price based on current quantity
-      const effectivePrice = computeEffectivePrice({
-        prices,
-        accountId: user.accountId!,
-        tierId: user.tierId!,
-        now: new Date(),
-        quantity: item.qty, // Use current quantity for volume pricing
-        tiers: tiers,
-      });
-
-      if (effectivePrice.price != null) {
-        // Apply option price adjustments if any
-        let finalPrice = effectivePrice.price;
-        
-        if (guitar?.options && item.selectedOptions) {
-          guitar.options.forEach((option) => {
-            const selectedValueId = item.selectedOptions?.[option.optionId];
-            if (selectedValueId) {
-              const selectedValue = option.values.find(
-                (v) => v.valueId === selectedValueId,
-              );
-              if (selectedValue?.priceAdjustment) {
-                finalPrice += selectedValue.priceAdjustment;
-              }
-            }
-          });
-        }
-        
-        return {
-          ...item,
-          unitPrice: finalPrice,
-        };
-      }
-
-      return item;
+      const rrp = getRRPForVariant(prices, guitar?.options ?? null, item.selectedOptions ?? null);
+      if (rrp == null) return item;
+      const unitPrice = getDealerPriceFromRRP(rrp, discountPercent);
+      return { ...item, unitPrice };
     });
-  }, [items, pricesMap, guitarsMap, tiers, user?.accountId, user?.tierId, loadingPrices]);
+  }, [items, pricesMap, guitarsMap, account?.discountPercent, user?.accountId, loadingPrices]);
 
   // Recalculate subtotal with current prices
   const currentSubtotal = useMemo(() => {

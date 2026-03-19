@@ -20,6 +20,61 @@ interface FxRatesDoc {
   rates: Record<string, number>;
 }
 
+/** Mailgun config from Firebase Functions config (preferred over SMTP). */
+function getMailgunConfig(): { apiKey: string; domain: string } | null {
+  const mailgun = functions.config().mailgun as { api_key?: string; domain?: string } | undefined;
+  if (mailgun?.api_key && mailgun?.domain) {
+    return { apiKey: mailgun.api_key, domain: mailgun.domain };
+  }
+  return null;
+}
+
+async function getFromEmail(): Promise<string> {
+  const docRef = db.collection("adminSettings").doc("global");
+  const snap = await docRef.get();
+  if (snap.exists) {
+    const data = snap.data() as { smtp?: { fromEmail?: string }; mailgun?: { fromEmail?: string } };
+    const from = data?.mailgun?.fromEmail || data?.smtp?.fromEmail;
+    if (from) return from;
+  }
+  const mailgun = getMailgunConfig();
+  if (mailgun) return `noreply@${mailgun.domain}`;
+  return "noreply@example.com";
+}
+
+/** Send one email via Mailgun API. */
+async function sendEmailViaMailgun(params: {
+  from: string;
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+}): Promise<void> {
+  const { apiKey, domain } = getMailgunConfig()!;
+  const { from, to, subject, text, html } = params;
+  const body = new URLSearchParams();
+  body.set("from", from);
+  body.set("to", to);
+  body.set("subject", subject);
+  if (text) body.set("text", text);
+  if (html) body.set("html", html);
+
+  const auth = Buffer.from(`api:${apiKey}`).toString("base64");
+  const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Mailgun API error ${res.status}: ${errText}`);
+  }
+}
+
 async function getSmtpSettings(): Promise<AdminSmtpSettings> {
   const docRef = db.collection("adminSettings").doc("global");
   const snap = await docRef.get();
@@ -38,6 +93,49 @@ async function getSmtpSettings(): Promise<AdminSmtpSettings> {
     );
   }
   return smtp;
+}
+
+/** Send email via Mailgun API (if configured) or SMTP. */
+async function sendEmail(params: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  from?: string;
+}): Promise<void> {
+  const from = params.from || (await getFromEmail());
+  const mailgun = getMailgunConfig();
+  if (mailgun) {
+    await sendEmailViaMailgun({
+      from,
+      to: params.to,
+      subject: params.subject,
+      text: params.text,
+      html: params.html,
+    });
+    return;
+  }
+  const smtp = await getSmtpSettings();
+  const smtpPassword = functions.config().smtp?.password as string | undefined;
+  if (smtp.username && !smtpPassword) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Either set Mailgun (functions config mailgun.api_key + mailgun.domain) or SMTP password (smtp.password).",
+    );
+  }
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: smtp.username ? { user: smtp.username, pass: smtpPassword } : undefined,
+  });
+  await transporter.sendMail({
+    from: smtp.fromEmail,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+    html: params.html,
+  });
 }
 
 interface SubmitOrderRequest {
@@ -207,41 +305,7 @@ export const sendDealerEmail = functions.https.onCall(
         );
       }
 
-      const smtp = await getSmtpSettings();
-
-      // Secret (password / API key) is stored in Functions config:
-      // firebase functions:config:set smtp.password="YOUR_SECRET"
-      const smtpPassword = functions.config().smtp?.password as
-        | string
-        | undefined;
-
-      if (!smtpPassword && smtp.username) {
-        throw new functions.https.HttpsError(
-          "failed-precondition",
-          "SMTP password is not configured in Functions config (smtp.password).",
-        );
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.port === 465, // true for 465, false for 587/others
-        auth: smtp.username
-          ? {
-              user: smtp.username,
-              pass: smtpPassword,
-            }
-          : undefined,
-      });
-
-      await transporter.sendMail({
-        from: smtp.fromEmail,
-        to,
-        subject,
-        text,
-        html,
-      });
-
+      await sendEmail({ to, subject, text, html });
       return { success: true };
     } catch (error: any) {
       console.error("Error in sendDealerEmail:", error);
@@ -251,6 +315,148 @@ export const sendDealerEmail = functions.https.onCall(
       throw new functions.https.HttpsError(
         "internal",
         error.message || "Failed to send email.",
+      );
+    }
+  },
+);
+
+/** Request body for createDealerAuthUser */
+interface CreateDealerAuthUserRequest {
+  accountId: string;
+  email: string;
+  companyName: string;
+  contactName?: string;
+  accountType: "DEALER" | "DISTRIBUTOR";
+  /** If true, send login details email via SMTP. Default true. */
+  sendEmail?: boolean;
+}
+
+/**
+ * Creates (or updates) a Firebase Auth user for a dealer/distributor with
+ * temporary password = companyName + "123!@#", sets custom claims, writes
+ * users/{uid}, and optionally sends login-details email.
+ * Admin only.
+ */
+export const createDealerAuthUser = functions.https.onCall(
+  async (data: CreateDealerAuthUserRequest, context: functions.https.CallableContext) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated.",
+        );
+      }
+      const role = context.auth.token.role as string | undefined;
+      if (role !== "ADMIN") {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only admin users can create dealer auth users.",
+        );
+      }
+
+      const { accountId, email, companyName, contactName, accountType } =
+        data as CreateDealerAuthUserRequest;
+      const sendEmail = data.sendEmail !== false;
+
+      if (!accountId || !email || !companyName?.trim()) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "accountId, email, and companyName are required.",
+        );
+      }
+
+      const accountSnap = await db.collection("accounts").doc(accountId).get();
+      if (!accountSnap.exists) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Account not found. Create the account first.",
+        );
+      }
+      const accountData = accountSnap.data() as { tierId?: string; currency?: string };
+      const tierId = accountData.tierId || "TIER_A";
+      const currency = accountData.currency || "AUD";
+
+      const tempPassword = companyName.trim() + "123!@#";
+      const auth = admin.auth();
+      let user: admin.auth.UserRecord;
+
+      try {
+        user = await auth.getUserByEmail(email);
+        await auth.updateUser(user.uid, { password: tempPassword });
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found") {
+          user = await auth.createUser({
+            email,
+            emailVerified: false,
+            password: tempPassword,
+            displayName: contactName || companyName.trim(),
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      const claims = {
+        role: accountType,
+        accountId,
+        tierId,
+        currency,
+      };
+      await auth.setCustomUserClaims(user.uid, claims);
+
+      const now = new Date().toISOString();
+      await db.collection("users").doc(user.uid).set(
+        {
+          role: accountType,
+          accountId,
+          email,
+          name: contactName || companyName.trim(),
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+
+      let emailSent = false;
+      if (sendEmail) {
+        try {
+          const mailgun = getMailgunConfig();
+          const smtp = mailgun ? null : await getSmtpSettings().catch(() => null);
+          const smtpPassword = functions.config().smtp?.password as string | undefined;
+          const canSend = mailgun || (smtp && (smtpPassword || !smtp.username));
+          if (canSend) {
+            const settingsSnap = await db.collection("adminSettings").doc("global").get();
+            const settingsData = (settingsSnap.exists ? settingsSnap.data() : null) as {
+              emailTemplates?: { welcomeSubject?: string; welcomeBody?: string };
+            } | null;
+            const welcomeSubject =
+              settingsData?.emailTemplates?.welcomeSubject || "Your Ormsby Dealer Portal login";
+            let body =
+              settingsData?.emailTemplates?.welcomeBody ||
+              "Your dealer portal account is ready.\n\nLogin URL: {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{password}}\n\nPlease change your password after first login if the portal allows it.";
+            body = body
+              .replace(/\{\{email\}\}/g, email)
+              .replace(/\{\{password\}\}/g, tempPassword)
+              .replace(/\{\{loginUrl\}\}/g, "https://ormsbydistribute.web.app/login");
+            await sendEmail({
+              to: email,
+              subject: welcomeSubject,
+              text: body,
+            });
+            emailSent = true;
+          }
+        } catch (emailErr: any) {
+          console.error("Failed to send login email:", emailErr);
+        }
+      }
+
+      return { uid: user.uid, emailSent };
+    } catch (error: any) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      console.error("Error in createDealerAuthUser:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to create dealer auth user.",
       );
     }
   },

@@ -21,6 +21,8 @@ export interface AccountDoc {
   name: string;
   tierId: string;
   currency: string;
+  /** Discount % off RRP (e.g. 30 = 30% off). Dealer price = RRP × (1 - discountPercent/100). */
+  discountPercent?: number;
   territory?: string;
   terms?: string;
   contactName?: string;
@@ -189,6 +191,40 @@ export interface OrderLineDoc {
   selectedOptions?: Record<string, string>;
 }
 
+export type OrderChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface OrderAddRequestDoc {
+  guitarId: string;
+  sku: string;
+  name: string;
+  qty: number;
+  /** Dealer-requested unit price (AUD) for transparency; admin recalculates on approval. */
+  unitPrice: number;
+  selectedOptions?: Record<string, string>;
+  requestedByUid: string;
+  requestedByAccountId: string;
+  status: OrderChangeRequestStatus;
+  requestedAt: string;
+  processedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
+export interface OrderRemoveRequestDoc {
+  /** Order line document id. */
+  lineId: string;
+  guitarId: string;
+  /** How many units the dealer wants removed from the line. */
+  qtyToRemove: number;
+  /** Line unit price (AUD) captured at request time for transparency. */
+  unitPrice: number;
+  requestedByUid: string;
+  requestedByAccountId: string;
+  status: OrderChangeRequestStatus;
+  requestedAt: string;
+  processedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
 export interface AdminBrandingSettings {
   siteName: string;
   logoUrl?: string;
@@ -219,9 +255,14 @@ export interface AdminEmailTemplateSettings {
   orderConfirmationBody?: string;
 }
 
+export interface AdminMailgunSettings {
+  fromEmail?: string;
+}
+
 export interface AdminSettingsDoc {
   branding: AdminBrandingSettings;
   smtp?: AdminSmtpSettings | null;
+  mailgun?: AdminMailgunSettings | null;
   notifications: AdminNotificationSettings;
   emailTemplates?: AdminEmailTemplateSettings | null;
   staffNotes?: string;

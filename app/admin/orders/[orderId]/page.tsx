@@ -2,10 +2,20 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, collection, getDocs, updateDoc, Timestamp } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
-import { OrderDoc, OrderLineDoc, OrderStatus, GuitarDoc } from "@/lib/types";
+import {
+  AccountDoc,
+  GuitarDoc,
+  OrderAddRequestDoc,
+  OrderDoc,
+  OrderLineDoc,
+  OrderRemoveRequestDoc,
+  OrderStatus,
+  PricesDoc,
+} from "@/lib/types";
+import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import Link from "next/link";
 import { 
   ArrowLeftIcon,
@@ -33,8 +43,23 @@ export default function AdminOrderDetailPage({
   const [order, setOrder] = useState<(OrderDoc & { id: string }) | null>(null);
   const [orderLines, setOrderLines] = useState<Array<OrderLineDoc & { id: string }>>([]);
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
+  const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
+  const [orderAccount, setOrderAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [addRequests, setAddRequests] = useState<
+    Array<OrderAddRequestDoc & { id: string }>
+  >([]);
+  const [removeRequests, setRemoveRequests] = useState<
+    Array<OrderRemoveRequestDoc & { id: string }>
+  >([]);
+
+  const [accounts, setAccounts] = useState<
+    Array<{ id: string; name?: string; discountPercent?: number }>
+  >([]);
+  const [targetAccountId, setTargetAccountId] = useState<string>("");
+  const [movingOrder, setMovingOrder] = useState(false);
   
   // Form states
   const [uploadingInvoice, setUploadingInvoice] = useState(false);
@@ -43,10 +68,42 @@ export default function AdminOrderDetailPage({
   const [etaDate, setEtaDate] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingEta, setUpdatingEta] = useState(false);
+  const [recalculatingPrices, setRecalculatingPrices] = useState(false);
 
   useEffect(() => {
     fetchOrder();
   }, [orderId]);
+
+  useEffect(() => {
+    async function fetchAccounts() {
+      try {
+        const accountsSnap = await getDocs(collection(db, "accounts"));
+        setAccounts(
+          accountsSnap.docs.map((doc) => {
+            const data = doc.data() as AccountDoc;
+            return {
+              id: doc.id,
+              name: data?.name,
+              discountPercent: data?.discountPercent,
+            };
+          }),
+        );
+      } catch (err) {
+        console.error("Error fetching accounts:", err);
+      }
+    }
+
+    fetchAccounts();
+  }, []);
+
+  useEffect(() => {
+    if (!order) return;
+    if (targetAccountId) return;
+
+    const preferredId = "acct_zjon-guitar-store";
+    const preferredExists = accounts.some((a) => a.id === preferredId);
+    setTargetAccountId(preferredExists ? preferredId : order.accountId);
+  }, [order, accounts, targetAccountId]);
 
   async function fetchOrder() {
     setLoading(true);
@@ -91,13 +148,46 @@ export default function AdminOrderDetailPage({
         new Set(linesData.map((line) => line.guitarId)),
       );
       const guitars = new Map<string, GuitarDoc>();
+      const prices = new Map<string, PricesDoc>();
       for (const guitarId of uniqueGuitarIds) {
-        const guitarSnap = await getDoc(doc(db, "guitars", guitarId));
+        const [guitarSnap, priceSnap] = await Promise.all([
+          getDoc(doc(db, "guitars", guitarId)),
+          getDoc(doc(db, "prices", guitarId)),
+        ]);
         if (guitarSnap.exists()) {
           guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
         }
+        if (priceSnap.exists()) {
+          prices.set(guitarId, priceSnap.data() as PricesDoc);
+        }
       }
       setGuitarsMap(guitars);
+      setPricesMap(prices);
+
+      const accountSnap = await getDoc(doc(db, "accounts", orderData.accountId));
+      if (accountSnap.exists()) {
+        setOrderAccount({ id: accountSnap.id, ...accountSnap.data() } as AccountDoc & { id: string });
+      } else {
+        setOrderAccount(null);
+      }
+
+      const [addReqSnap, removeReqSnap] = await Promise.all([
+        getDocs(collection(db, "orders", orderId, "addRequests")),
+        getDocs(collection(db, "orders", orderId, "removeRequests")),
+      ]);
+
+      setAddRequests(
+        addReqSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as OrderAddRequestDoc),
+        })),
+      );
+      setRemoveRequests(
+        removeReqSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as OrderRemoveRequestDoc),
+        })),
+      );
     } catch (err) {
       console.error(err);
       setError("Unable to load order");
@@ -169,6 +259,275 @@ export default function AdminOrderDetailPage({
       alert("Failed to update order status");
     } finally {
       setUpdatingStatus(false);
+    }
+  }
+
+  async function handleRecalculatePrices() {
+    if (!order || orderLines.length === 0) return;
+
+    const discountPercent = orderAccount?.discountPercent ?? 0;
+
+    setRecalculatingPrices(true);
+    try {
+      let newSubtotal = 0;
+      const batch = writeBatch(db);
+
+      for (const line of orderLines) {
+        const prices = pricesMap.get(line.guitarId);
+        const guitar = guitarsMap.get(line.guitarId);
+        const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, line.selectedOptions ?? null);
+        const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
+        const lineTotal = unitPrice * line.qty;
+        newSubtotal += lineTotal;
+        const lineRef = doc(db, "orders", orderId, "lines", line.id);
+        batch.update(lineRef, {
+          unitPrice,
+          lineTotal,
+        });
+      }
+
+      const orderRef = doc(db, "orders", orderId);
+      batch.update(orderRef, {
+        totals: { subtotal: newSubtotal, currency: order.currency },
+        updatedAt: new Date().toISOString(),
+      });
+
+      await batch.commit();
+      await fetchOrder();
+      alert("Prices recalculated from guitar pricing.");
+    } catch (err) {
+      console.error("Error recalculating prices:", err);
+      alert("Failed to recalculate prices");
+    } finally {
+      setRecalculatingPrices(false);
+    }
+  }
+
+  async function handleMoveOrderToAccount() {
+    if (!order || orderLines.length === 0) return;
+    if (!targetAccountId) return;
+    if (targetAccountId === order.accountId) {
+      alert("Order is already assigned to that account.");
+      return;
+    }
+
+    setMovingOrder(true);
+    try {
+      const targetAccountSnap = await getDoc(doc(db, "accounts", targetAccountId));
+      if (!targetAccountSnap.exists()) {
+        alert("Target account not found.");
+        return;
+      }
+
+      const targetAccount = targetAccountSnap.data() as AccountDoc;
+      const discountPercent = targetAccount?.discountPercent ?? 0;
+
+      let newSubtotal = 0;
+      const batch = writeBatch(db);
+
+      for (const line of orderLines) {
+        const prices = pricesMap.get(line.guitarId);
+        const guitar = guitarsMap.get(line.guitarId);
+        const rrp = getRRPForVariant(
+          prices ?? null,
+          guitar?.options ?? null,
+          line.selectedOptions ?? null,
+        );
+
+        const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
+        const lineTotal = unitPrice * line.qty;
+        newSubtotal += lineTotal;
+
+        batch.update(doc(db, "orders", orderId, "lines", line.id), {
+          unitPrice,
+          lineTotal,
+        });
+      }
+
+      batch.update(doc(db, "orders", orderId), {
+        accountId: targetAccountId,
+        totals: { subtotal: newSubtotal, currency: order.currency },
+        updatedAt: new Date().toISOString(),
+      });
+
+      await batch.commit();
+      await fetchOrder();
+      alert("Order moved successfully.");
+    } catch (err) {
+      console.error("Error moving order:", err);
+      alert("Failed to move order.");
+    } finally {
+      setMovingOrder(false);
+    }
+  }
+
+  const [processingRequests, setProcessingRequests] = useState(false);
+
+  async function handleApproveAddRequest(requestId: string) {
+    if (!order || processingRequests) return;
+
+    const req = addRequests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    setProcessingRequests(true);
+    try {
+      const orderSnap = await getDoc(doc(db, "orders", orderId));
+      if (!orderSnap.exists()) throw new Error("Order not found");
+
+      const discountPercent = orderAccount?.discountPercent ?? 0;
+
+      const [guitarSnap, pricesSnap] = await Promise.all([
+        getDoc(doc(db, "guitars", req.guitarId)),
+        getDoc(doc(db, "prices", req.guitarId)),
+      ]);
+
+      if (!guitarSnap.exists() || !pricesSnap.exists()) {
+        throw new Error("Missing guitar/prices for add request.");
+      }
+
+      const guitar = guitarSnap.data() as GuitarDoc;
+      const prices = pricesSnap.data() as PricesDoc;
+      const rrp = getRRPForVariant(prices, guitar.options ?? null, req.selectedOptions ?? null);
+      const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
+      const lineTotal = unitPrice * req.qty;
+
+      // Create a new line for this approved request.
+      const lineRef = doc(collection(db, "orders", orderId, "lines"));
+      const batch = writeBatch(db);
+      batch.set(lineRef, {
+        guitarId: req.guitarId,
+        sku: req.sku,
+        name: req.name,
+        qty: req.qty,
+        unitPrice,
+        lineTotal,
+        selectedOptions: req.selectedOptions ?? null,
+      });
+      await batch.commit();
+
+      // Update order subtotal.
+      const orderData = orderSnap.data() as OrderDoc;
+      await updateDoc(doc(db, "orders", orderId), {
+        totals: {
+          subtotal: (orderData.totals?.subtotal ?? 0) + lineTotal,
+          currency: order.currency,
+        },
+        updatedAt: new Date().toISOString(),
+      });
+
+      await updateDoc(doc(db, "orders", orderId, "addRequests", requestId), {
+        status: "APPROVED",
+        processedAt: new Date().toISOString(),
+        rejectionReason: null,
+      });
+
+      await fetchOrder();
+      alert("Add request approved.");
+    } catch (err) {
+      console.error("Error approving add request:", err);
+      alert("Failed to approve add request.");
+    } finally {
+      setProcessingRequests(false);
+    }
+  }
+
+  async function handleRejectAddRequest(requestId: string) {
+    if (!order || processingRequests) return;
+    setProcessingRequests(true);
+    try {
+      await updateDoc(doc(db, "orders", orderId, "addRequests", requestId), {
+        status: "REJECTED",
+        processedAt: new Date().toISOString(),
+      });
+      await fetchOrder();
+      alert("Add request rejected.");
+    } catch (err) {
+      console.error("Error rejecting add request:", err);
+      alert("Failed to reject add request.");
+    } finally {
+      setProcessingRequests(false);
+    }
+  }
+
+  async function handleApproveRemoveRequest(requestId: string) {
+    if (!order || processingRequests) return;
+
+    const req = removeRequests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    setProcessingRequests(true);
+    try {
+      const [orderSnap, lineSnap] = await Promise.all([
+        getDoc(doc(db, "orders", orderId)),
+        getDoc(doc(db, "orders", orderId, "lines", req.lineId)),
+      ]);
+
+      if (!orderSnap.exists()) throw new Error("Order not found");
+      if (!lineSnap.exists()) throw new Error("Order line not found");
+
+      const orderData = orderSnap.data() as OrderDoc;
+      const lineData = lineSnap.data() as OrderLineDoc;
+
+      // Unit price on the line is the captured unit price at request time.
+      // We keep it to avoid changing price assumptions mid-flight.
+      const actualRemoveQty = Math.min(req.qtyToRemove, lineData.qty);
+      const removedSubtotal = lineData.unitPrice * actualRemoveQty;
+      const newQty = lineData.qty - actualRemoveQty;
+
+      const batch = writeBatch(db);
+
+      if (newQty <= 0) {
+        batch.delete(doc(db, "orders", orderId, "lines", req.lineId));
+      } else {
+        batch.update(doc(db, "orders", orderId, "lines", req.lineId), {
+          qty: newQty,
+          lineTotal: lineData.unitPrice * newQty,
+        });
+      }
+
+      batch.update(doc(db, "orders", orderId), {
+        totals: {
+          subtotal: (orderData.totals?.subtotal ?? 0) - removedSubtotal,
+          currency: order.currency,
+        },
+        updatedAt: new Date().toISOString(),
+      });
+
+      batch.update(
+        doc(db, "orders", orderId, "removeRequests", requestId),
+        {
+          status: "APPROVED",
+          processedAt: new Date().toISOString(),
+          rejectionReason: null,
+        },
+      );
+
+      await batch.commit();
+      await fetchOrder();
+      alert("Removal request approved.");
+    } catch (err) {
+      console.error("Error approving remove request:", err);
+      alert("Failed to approve removal request.");
+    } finally {
+      setProcessingRequests(false);
+    }
+  }
+
+  async function handleRejectRemoveRequest(requestId: string) {
+    if (!order || processingRequests) return;
+    setProcessingRequests(true);
+    try {
+      await updateDoc(doc(db, "orders", orderId, "removeRequests", requestId), {
+        status: "REJECTED",
+        processedAt: new Date().toISOString(),
+      });
+      await fetchOrder();
+      alert("Removal request rejected.");
+    } catch (err) {
+      console.error("Error rejecting remove request:", err);
+      alert("Failed to reject removal request.");
+    } finally {
+      setProcessingRequests(false);
     }
   }
 
@@ -318,6 +677,50 @@ export default function AdminOrderDetailPage({
                               })}{" "}
                               each
                             </p>
+                            {(() => {
+                              const prices = pricesMap.get(line.guitarId);
+                              const discountPercent = orderAccount?.discountPercent ?? 0;
+                              const rrp = getRRPForVariant(
+                                prices ?? null,
+                                guitar?.options ?? null,
+                                line.selectedOptions ?? null,
+                              );
+                              const currentUnit =
+                                rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : null;
+
+                              return currentUnit != null ? (
+                                <p className="mt-0.5 text-xs text-neutral-500">
+                                  Current: {order.currency === "USD" ? "$" : order.currency}{" "}
+                                  {currentUnit.toLocaleString("en-US", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  each
+                                </p>
+                              ) : null;
+                            })()}
+                            <p className="mt-1 text-sm font-semibold text-white">
+                              {order.currency === "USD" ? "$" : order.currency}{" "}
+                              {(line.unitPrice * line.qty).toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              total
+                            </p>
+                            <div className="mt-2 flex flex-wrap justify-end gap-2">
+                              <Link
+                                href={`/admin/pricing/${line.guitarId}`}
+                                className="text-xs text-accent hover:text-accent-soft"
+                              >
+                                Edit pricing
+                              </Link>
+                              <Link
+                                href={`/admin/guitars/${line.guitarId}/preview`}
+                                className="text-xs text-neutral-400 hover:text-white"
+                              >
+                                View guitar
+                              </Link>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -432,6 +835,203 @@ export default function AdminOrderDetailPage({
                   {updatingEta ? "Updating..." : "Update ETA"}
                 </button>
               </form>
+            </div>
+
+            {/* Recalculate prices (for seeded orders with 0 prices) */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                Prices
+              </h2>
+              <p className="mb-3 text-xs text-neutral-500">
+                Recalculate line prices from current RRP pricing using the order account discount.
+              </p>
+              <button
+                type="button"
+                onClick={handleRecalculatePrices}
+                disabled={recalculatingPrices}
+                className="w-full rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent/20 disabled:opacity-50"
+              >
+                {recalculatingPrices ? "Recalculating…" : "Recalculate prices"}
+              </button>
+            </div>
+
+            {/* Move Order */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                Move Order
+              </h2>
+              <p className="mb-3 text-xs text-neutral-500">
+                Reassign this order to another dealer account and recalculate prices using that account&apos;s discount.
+              </p>
+
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                Target account
+              </label>
+              <select
+                value={targetAccountId}
+                onChange={(e) => setTargetAccountId(e.target.value)}
+                disabled={accounts.length === 0 || movingOrder}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent disabled:opacity-50"
+              >
+                {accounts.length === 0 ? (
+                  <option value="">Loading accounts…</option>
+                ) : (
+                  accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name ? `${a.name} (${a.id})` : a.id}
+                    </option>
+                  ))
+                )}
+              </select>
+
+              <button
+                type="button"
+                onClick={handleMoveOrderToAccount}
+                disabled={
+                  movingOrder ||
+                  !targetAccountId ||
+                  accounts.length === 0 ||
+                  targetAccountId === order.accountId
+                }
+                className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-soft disabled:opacity-50"
+              >
+                {movingOrder ? "Moving…" : "Move to selected account"}
+              </button>
+            </div>
+
+            {/* Add / Remove Requests */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                Pending Changes
+              </h2>
+
+              {addRequests.filter((r) => r.status === "PENDING").length === 0 &&
+              removeRequests.filter((r) => r.status === "PENDING").length === 0 ? (
+                <p className="text-xs text-neutral-500">No pending add/remove requests.</p>
+              ) : (
+                <div className="space-y-5">
+                  {addRequests.filter((r) => r.status === "PENDING").length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Add requests
+                      </p>
+                      <div className="space-y-2">
+                        {addRequests
+                          .filter((r) => r.status === "PENDING")
+                          .map((r) => (
+                            <div
+                              key={r.id}
+                              className="rounded-lg border border-white/10 bg-white/5 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-white">
+                                    {r.name}
+                                  </p>
+                                  <p className="text-xs text-neutral-400">
+                                    SKU: {r.sku} · Qty: {r.qty}
+                                  </p>
+                                  {r.selectedOptions &&
+                                    Object.keys(r.selectedOptions).length > 0 && (
+                                      <p className="mt-1 text-[11px] text-neutral-500">
+                                        {Object.entries(r.selectedOptions)
+                                          .map(([k, v]) => `${k}: ${v}`)
+                                          .join(" · ")}
+                                      </p>
+                                    )}
+                                  <p className="mt-1 text-[11px] text-neutral-500">
+                                    Requested unit:{" "}
+                                    {order.currency === "USD" ? "$" : order.currency}{" "}
+                                    {r.unitPrice.toLocaleString("en-US", {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveAddRequest(r.id)}
+                                    disabled={processingRequests}
+                                    className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-black transition hover:bg-accent-soft disabled:opacity-50"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectAddRequest(r.id)}
+                                    disabled={processingRequests}
+                                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {removeRequests.filter((r) => r.status === "PENDING").length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Remove requests
+                      </p>
+                      <div className="space-y-2">
+                        {removeRequests
+                          .filter((r) => r.status === "PENDING")
+                          .map((r) => (
+                            <div
+                              key={r.id}
+                              className="rounded-lg border border-white/10 bg-white/5 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-white">
+                                    {guitarsMap.get(r.guitarId)?.name ?? r.guitarId}
+                                  </p>
+                                  <p className="text-xs text-neutral-400">
+                                    Qty to remove: {r.qtyToRemove} · Line:{" "}
+                                    {r.lineId.slice(0, 8)}
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-neutral-500">
+                                    Unit:{" "}
+                                    {order.currency === "USD" ? "$" : order.currency}{" "}
+                                    {r.unitPrice.toLocaleString("en-US", {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveRemoveRequest(r.id)}
+                                    disabled={processingRequests}
+                                    className="rounded-lg bg-yellow-500/20 px-3 py-2 text-xs font-semibold text-yellow-200 transition hover:bg-yellow-500/30 disabled:opacity-50"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectRemoveRequest(r.id)}
+                                    disabled={processingRequests}
+                                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Order Summary */}

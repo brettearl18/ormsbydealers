@@ -10,10 +10,10 @@ import {
   AvailabilityDoc,
   PricesDoc,
   AvailabilityState,
-  GuitarOption,
   FxRatesDoc,
+  AccountDoc,
 } from "@/lib/types";
-import { computeEffectivePrice } from "@/lib/pricing";
+import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { TierDoc } from "@/lib/types";
 import { AvailabilityBadge } from "@/components/guitars/AvailabilityBadge";
 import { PriceTag } from "@/components/guitars/PriceTag";
@@ -36,7 +36,7 @@ export default function GuitarDetailPage({
     null,
   );
   const [prices, setPrices] = useState<PricesDoc | null>(null);
-  const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
+  const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addItem } = useCart();
@@ -69,12 +69,12 @@ export default function GuitarDetailPage({
       setFetching(true);
       setError(null);
       try {
-        const [guitarSnap, availabilitySnap, pricesSnap, tiersSnap, fxSnap] =
+        const [guitarSnap, availabilitySnap, pricesSnap, accountSnap, fxSnap] =
           await Promise.all([
             getDoc(doc(db, "guitars", guitarId)),
             getDoc(doc(db, "availability", guitarId)),
             getDoc(doc(db, "prices", guitarId)),
-            getDocs(collection(db, "tiers")),
+            user?.accountId ? getDoc(doc(db, "accounts", user.accountId)) : Promise.resolve(null),
             getDoc(doc(db, "fxRates", "latest")),
           ]);
 
@@ -99,15 +99,15 @@ export default function GuitarDetailPage({
         );
         setPrices(pricesSnap.exists() ? (pricesSnap.data() as PricesDoc) : null);
 
+        if (accountSnap?.exists()) {
+          setAccount({ id: accountSnap.id, ...accountSnap.data() } as AccountDoc & { id: string });
+        } else {
+          setAccount(null);
+        }
+
         if (fxSnap.exists()) {
           setFxRates(fxSnap.data() as FxRatesDoc);
         }
-
-        const tiersData = tiersSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Array<TierDoc & { id: string }>;
-        setTiers(tiersData);
       } catch (err) {
         setError("Unable to load guitar details");
         console.error(err);
@@ -119,21 +119,15 @@ export default function GuitarDetailPage({
     fetchGuitar();
   }, [guitarId, user, authLoading, router]);
 
-  // Calculate effective price with volume-based tier pricing (recalculates when quantity changes)
-  // Must be before any conditional returns to follow Rules of Hooks
+  // Dealer price = RRP × (1 - account.discountPercent/100)
   const effectivePrice = useMemo(() => {
-    if (!user?.accountId || !user?.tierId || !prices) {
-      return { price: null, source: null };
-    }
-    return computeEffectivePrice({
-      prices,
-      accountId: user.accountId,
-      tierId: user.tierId,
-      now: new Date(),
-      quantity: quantity, // Pass quantity for volume-based tier pricing
-      tiers: tiers, // Pass tiers for volume matching
-    });
-  }, [prices, user?.accountId, user?.tierId, quantity, tiers]);
+    if (!prices || !guitar) return { price: null, source: null as const };
+    const rrp = getRRPForVariant(prices, guitar.options ?? null, selectedOptions);
+    if (rrp == null) return { price: null, source: null };
+    const discountPercent = account?.discountPercent ?? 0;
+    const price = getDealerPriceFromRRP(rrp, discountPercent);
+    return { price, source: "BASE" as const };
+  }, [prices, guitar, selectedOptions, account?.discountPercent]);
 
   // Update display images when options change - prioritize option-specific images
   useEffect(() => {
@@ -167,33 +161,16 @@ export default function GuitarDetailPage({
     }
   }, [selectedOptions, guitar]);
 
-  // Calculate approximate local currency price (must be before conditional returns for Rules of Hooks)
+  // Calculate approximate local currency price (dealer price is already RRP × (1 - discount%))
   const approximateLocalUnit = useMemo(() => {
-    if (!effectivePrice.price || !fxRates || !user?.currency || !guitar) return null;
-    
-    // Calculate final price with option adjustments (inline logic)
-    let base = effectivePrice.price;
-    if (guitar.options) {
-      guitar.options.forEach((option) => {
-        const selectedValueId = selectedOptions[option.optionId];
-        if (selectedValueId) {
-          const selectedValue = option.values.find(
-            (v) => v.valueId === selectedValueId,
-          );
-          if (selectedValue?.priceAdjustment) {
-            base += selectedValue.priceAdjustment;
-          }
-        }
-      });
-    }
-    
+    if (!effectivePrice.price || !fxRates || !user?.currency) return null;
     const rate =
       user.currency === fxRates.base
         ? 1
         : fxRates.rates[user.currency] ?? null;
     if (!rate) return null;
-    return base * rate;
-  }, [effectivePrice.price, fxRates, user?.currency, guitar, selectedOptions]);
+    return effectivePrice.price * rate;
+  }, [effectivePrice.price, fxRates, user?.currency]);
 
   // Display RRP (base RRP + option RRP adjustments) for dealer reference
   const displayRrp = useMemo(() => {
@@ -214,34 +191,16 @@ export default function GuitarDetailPage({
     return rrp;
   }, [prices?.rrp, guitar?.options, selectedOptions]);
 
-  // Calculate converted price for selected display currency
+  // Calculate converted price for selected display currency (dealer price already includes variant RRP + discount)
   const convertedPrice = useMemo(() => {
-    if (!fxRates || !selectedDisplayCurrency || !guitar || !effectivePrice.price) return null;
-    
-    // Calculate final price with option adjustments
-    let base: number = effectivePrice.price;
-    
-    if (guitar.options) {
-      guitar.options.forEach((option) => {
-        const selectedValueId = selectedOptions[option.optionId];
-        if (selectedValueId) {
-          const selectedValue = option.values.find(
-            (v) => v.valueId === selectedValueId,
-          );
-          if (selectedValue?.priceAdjustment) {
-            base += selectedValue.priceAdjustment;
-          }
-        }
-      });
-    }
-    
+    if (!fxRates || !selectedDisplayCurrency || !effectivePrice.price) return null;
     const rate =
       selectedDisplayCurrency === fxRates.base
         ? 1
         : fxRates.rates[selectedDisplayCurrency] ?? null;
     if (!rate) return null;
-    return base * rate;
-  }, [effectivePrice.price, fxRates, selectedDisplayCurrency, guitar, selectedOptions]);
+    return effectivePrice.price * rate;
+  }, [effectivePrice.price, fxRates, selectedDisplayCurrency]);
 
   // Initialize selected display currency to user's currency if available
   useEffect(() => {
@@ -286,27 +245,8 @@ export default function GuitarDetailPage({
     );
   }
 
-  // Calculate final price with option adjustments
-  const calculateFinalPrice = () => {
-    if (!effectivePrice.price) return null;
-    let finalPrice = effectivePrice.price;
-    
-    if (guitar.options) {
-      guitar.options.forEach((option) => {
-        const selectedValueId = selectedOptions[option.optionId];
-        if (selectedValueId) {
-          const selectedValue = option.values.find(
-            (v) => v.valueId === selectedValueId,
-          );
-          if (selectedValue?.priceAdjustment) {
-            finalPrice += selectedValue.priceAdjustment;
-          }
-        }
-      });
-    }
-    
-    return finalPrice;
-  };
+  // Dealer price is already RRP × (1 - discount%) for selected variant
+  const calculateFinalPrice = () => effectivePrice.price ?? null;
 
   // Build final SKU with option suffixes
   const buildFinalSku = () => {

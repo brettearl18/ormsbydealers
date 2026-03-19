@@ -108,4 +108,28 @@ export function computeEffectivePrice({
   return { price: prices.basePrice, source: "BASE" };
 }
 
+/** Dealer price from RRP and account discount %: RRP × (1 - discountPercent/100). */
+export function getDealerPriceFromRRP(rrp: number, discountPercent: number): number {
+  const pct = Math.max(0, Math.min(100, discountPercent));
+  return rrp * (1 - pct / 100);
+}
+
+/** Get RRP for a guitar variant (base RRP + option rrpAdjustments). */
+export function getRRPForVariant(
+  prices: PricesDoc | null,
+  options?: Array<{ optionId: string; values: Array<{ valueId: string; rrpAdjustment?: number }> }> | null,
+  selectedOptions?: Record<string, string> | null
+): number | null {
+  if (!prices || prices.rrp == null) return null;
+  let rrp = prices.rrp;
+  if (options && selectedOptions) {
+    for (const opt of options) {
+      const valueId = selectedOptions[opt.optionId];
+      const val = opt.values.find((v) => v.valueId === valueId);
+      if (val?.rrpAdjustment != null) rrp += val.rrpAdjustment;
+    }
+  }
+  return rrp;
+}
+
 

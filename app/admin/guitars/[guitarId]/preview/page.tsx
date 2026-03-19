@@ -2,16 +2,15 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
   GuitarDoc,
   AvailabilityDoc,
   PricesDoc,
   AvailabilityState,
-  TierDoc,
 } from "@/lib/types";
-import { computeEffectivePrice } from "@/lib/pricing";
+import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { AvailabilityBadge } from "@/components/guitars/AvailabilityBadge";
 import { PriceTag } from "@/components/guitars/PriceTag";
 import { ImageCarousel } from "@/components/guitars/ImageCarousel";
@@ -30,22 +29,20 @@ export default function AdminPreviewPage({
     null,
   );
   const [prices, setPrices] = useState<PricesDoc | null>(null);
-  const [tiers, setTiers] = useState<Array<TierDoc & { id: string }>>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+  /** Sample discount for preview only (30, 35, 50); 0 = show RRP only */
+  const [sampleDiscountPercent, setSampleDiscountPercent] = useState<number>(0);
 
   useEffect(() => {
     async function fetchData() {
       setFetching(true);
       setError(null);
       try {
-        const [guitarSnap, availabilitySnap, pricesSnap, tiersSnap] =
-          await Promise.all([
+        const [guitarSnap, availabilitySnap, pricesSnap] = await Promise.all([
             getDoc(doc(db, "guitars", guitarId)),
             getDoc(doc(db, "availability", guitarId)),
             getDoc(doc(db, "prices", guitarId)),
-            getDocs(collection(db, "tiers")),
           ]);
 
         if (!guitarSnap.exists()) {
@@ -67,15 +64,6 @@ export default function AdminPreviewPage({
         setPrices(
           pricesSnap.exists() ? (pricesSnap.data() as PricesDoc) : null,
         );
-
-        const tiersData = tiersSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Array<TierDoc & { id: string }>;
-        setTiers(tiersData);
-        if (tiersData.length > 0 && !selectedTierId) {
-          setSelectedTierId(tiersData[0].id);
-        }
       } catch (err) {
         setError("Unable to load guitar details");
         console.error(err);
@@ -85,7 +73,7 @@ export default function AdminPreviewPage({
     }
 
     fetchData();
-  }, [guitarId, selectedTierId]);
+  }, [guitarId]);
 
   if (fetching) {
     return (
@@ -113,15 +101,15 @@ export default function AdminPreviewPage({
     );
   }
 
-  // Compute price for selected tier (using a dummy accountId)
-  const effectivePrice = selectedTierId
-    ? computeEffectivePrice({
-        prices,
-        accountId: "preview", // Dummy account for preview
-        tierId: selectedTierId,
-        now: new Date(),
-      })
-    : { price: prices?.basePrice ?? null, source: "BASE" as const };
+  const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, null);
+  const displayPrice =
+    sampleDiscountPercent > 0 && rrp != null
+      ? getDealerPriceFromRRP(rrp, sampleDiscountPercent)
+      : rrp ?? null;
+  const displayNote =
+    sampleDiscountPercent > 0
+      ? `Sample dealer price at ${sampleDiscountPercent}% off RRP`
+      : "RRP (dealer price = RRP × (1 − account discount %))";
 
   return (
     <AdminGuard>
@@ -152,29 +140,32 @@ export default function AdminPreviewPage({
           </div>
         </div>
 
-        {/* Tier Selector (if multiple tiers exist) */}
-        {tiers.length > 1 && (
-          <div className="glass-strong rounded-2xl p-4">
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Preview Pricing for Tier:
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {tiers.map((tier) => (
-                <button
-                  key={tier.id}
-                  onClick={() => setSelectedTierId(tier.id)}
-                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-                    selectedTierId === tier.id
-                      ? "border-accent bg-accent/20 text-accent"
-                      : "border-white/10 bg-white/5 text-neutral-400 hover:border-white/20 hover:text-white"
-                  }`}
-                >
-                  {tier.name}
-                </button>
-              ))}
-            </div>
+        {/* Sample discount (preview only) */}
+        <div className="glass-strong rounded-2xl p-4">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            Sample dealer discount (preview only)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: 0, label: "RRP only" },
+              { value: 30, label: "30% off" },
+              { value: 35, label: "35% off" },
+              { value: 50, label: "50% off" },
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setSampleDiscountPercent(value)}
+                className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                  sampleDiscountPercent === value
+                    ? "border-accent bg-accent/20 text-accent"
+                    : "border-white/10 bg-white/5 text-neutral-400 hover:border-white/20 hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* Guitar Preview (Dealer View) */}
         <div className="flex flex-1 flex-col gap-8">
@@ -216,17 +207,9 @@ export default function AdminPreviewPage({
 
               <div className="flex items-baseline gap-4">
                 <PriceTag
-                  price={effectivePrice.price}
-                  currency={prices?.currency || "USD"}
-                  note={
-                    effectivePrice.source === "PROMO"
-                      ? "Promo price"
-                      : effectivePrice.source === "ACCOUNT_OVERRIDE"
-                      ? "Account-specific price"
-                      : effectivePrice.source === "TIER"
-                      ? `Tier ${selectedTierId} price`
-                      : "Base price"
-                  }
+                  price={displayPrice}
+                  currency={prices?.currency || "AUD"}
+                  note={displayNote}
                 />
               </div>
 

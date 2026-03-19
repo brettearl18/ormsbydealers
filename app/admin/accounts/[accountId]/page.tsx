@@ -290,6 +290,7 @@ export default function AccountDetailPage({
                     currency: formData.currency ?? account.currency,
                     updatedAt: new Date().toISOString(),
                   };
+                  payload.discountPercent = formData.discountPercent ?? 0;
                   if (formData.territory !== undefined) payload.territory = formData.territory || "";
                   if (formData.terms !== undefined) payload.terms = formData.terms || "";
                   if (formData.contactName !== undefined) payload.contactName = formData.contactName || "";
@@ -368,6 +369,20 @@ export default function AccountDetailPage({
                     <option value="CAD">CAD</option>
                     <option value="JPY">JPY</option>
                   </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Discount % off RRP</label>
+                  <select
+                    value={formData.discountPercent ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, discountPercent: e.target.value === "" ? undefined : Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+                  >
+                    <option value="">Not set</option>
+                    <option value="30">30% off RRP</option>
+                    <option value="35">35% off RRP</option>
+                    <option value="50">50% off RRP</option>
+                  </select>
+                  <p className="mt-1 text-xs text-neutral-500">Dealer price = RRP × (1 − discount%)</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-neutral-400">Territory</label>
@@ -619,6 +634,22 @@ export default function AccountDetailPage({
                   </div>
                 </div>
 
+                {/* Discount % off RRP */}
+                <div className="flex items-start gap-3">
+                  <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-neutral-400" />
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+                      Discount off RRP
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {(account as AccountDoc).discountPercent != null &&
+                      (account as AccountDoc).discountPercent !== 0
+                        ? `${(account as AccountDoc).discountPercent}% off RRP`
+                        : "Not set"}
+                    </p>
+                  </div>
+                </div>
+
                 {/* Territory */}
                 {account.territory && (
                   <div className="flex items-start gap-3">
@@ -785,6 +816,7 @@ export default function AccountDetailPage({
                       name: account.name,
                       tierId: account.tierId,
                       currency: account.currency,
+                      discountPercent: (account as AccountDoc).discountPercent ?? undefined,
                       territory: account.territory ?? "",
                       terms: account.terms ?? "",
                       contactName: (account as AccountDoc).contactName ?? "",

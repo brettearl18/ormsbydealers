@@ -82,8 +82,8 @@ export default function DashboardPage() {
         // Fetch featured guitars (first 6)
         const guitarsData = await fetchDealerGuitars({
           accountId: user.accountId!,
-          tierId: user.tierId!,
-          currency: user.currency!,
+          tierId: user.tierId ?? undefined,
+          currency: user.currency ?? undefined,
         });
         setGuitars(guitarsData.slice(0, 6));
       } catch (err) {

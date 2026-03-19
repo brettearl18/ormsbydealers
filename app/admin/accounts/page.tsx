@@ -3,8 +3,20 @@
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { collection, getDocs, getDoc, doc, updateDoc, setDoc, query, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  getDoc,
+  doc,
+  updateDoc,
+  setDoc,
+  query,
+  where,
+  orderBy,
+  deleteDoc,
+} from "firebase/firestore";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { AccountDoc, OrderDoc, OrderStatus, AccountRequestDoc } from "@/lib/types";
 import { getAuth } from "firebase/auth";
 import { 
@@ -40,6 +52,33 @@ function ManageAccountsContent() {
     (tabParam === "orders" || tabParam === "notifications" || tabParam === "requests" ? tabParam : "accounts") as "accounts" | "requests" | "orders" | "notifications"
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState<{
+    accountId: string;
+    name: string;
+    tierId: string;
+    currency: string;
+    territory: string;
+    discountPercent: number; // 0 = Not set
+    uid: string; // optional; if provided we'll create/update a users doc
+    email: string; // optional; used if uid is provided
+    accountType: "DEALER" | "DISTRIBUTOR";
+    contactName: string; // optional; used if uid is provided
+  }>({
+    accountId: "",
+    name: "",
+    tierId: "TIER_A",
+    currency: "AUD",
+    territory: "",
+    discountPercent: 0,
+    uid: "",
+    email: "",
+    accountType: "DEALER",
+    contactName: "",
+  });
+  const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -210,6 +249,147 @@ function ManageAccountsContent() {
     }
   }
 
+  async function handleCreateAccount() {
+    setCreateSubmitting(true);
+    setCreateError(null);
+    try {
+      const name = createForm.name.trim();
+      if (!name) {
+        setCreateError("Company name is required.");
+        return;
+      }
+
+      const accountId =
+        createForm.accountId.trim() ||
+        `acct_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+      const tierId = createForm.tierId.trim() || "TIER_A";
+      const currency = createForm.currency.trim() || "AUD";
+      const territory = createForm.territory.trim() || null;
+      const contactName = createForm.contactName.trim() || name;
+      const contactEmail = createForm.email.trim() || undefined;
+
+      await setDoc(doc(db, "accounts", accountId), {
+        name,
+        tierId,
+        currency,
+        contactName,
+        contactEmail,
+        territory,
+        discountPercent: createForm.discountPercent || 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      const email = createForm.email.trim();
+      if (email) {
+        const createDealerAuthUser = httpsCallable<
+          {
+            accountId: string;
+            email: string;
+            companyName: string;
+            contactName?: string;
+            accountType: "DEALER" | "DISTRIBUTOR";
+            sendEmail?: boolean;
+          },
+          { uid: string; emailSent: boolean }
+        >(functions, "createDealerAuthUser");
+        const res = await createDealerAuthUser({
+          accountId,
+          email,
+          companyName: name,
+          contactName: contactName || undefined,
+          accountType: createForm.accountType as "DEALER" | "DISTRIBUTOR",
+          sendEmail: true,
+        });
+        const data = res.data as { uid: string; emailSent: boolean };
+        setShowCreateAccount(false);
+        setCreateForm({
+          accountId: "",
+          name: "",
+          tierId: "TIER_A",
+          currency: "AUD",
+          territory: "",
+          discountPercent: 0,
+          uid: "",
+          email: "",
+          accountType: "DEALER",
+          contactName: "",
+        });
+        await fetchData();
+        alert(
+          data.emailSent
+            ? `Account created. Login details have been emailed to ${email}.`
+            : `Account created. Login details could not be emailed; temp password: ${name.trim()}123!@#`,
+        );
+        setCreateSubmitting(false);
+        return;
+      }
+
+      const uid = createForm.uid.trim();
+      if (uid) {
+        throw new Error("Email is required when creating/updating a user.");
+      }
+
+      setShowCreateAccount(false);
+      setCreateForm({
+        accountId: "",
+        name: "",
+        tierId: "TIER_A",
+        currency: "AUD",
+        territory: "",
+        discountPercent: 0,
+        uid: "",
+        email: "",
+        accountType: "DEALER",
+        contactName: "",
+      });
+      await fetchData();
+      alert("Account created successfully.");
+    } catch (err: any) {
+      console.error("Error creating account:", err);
+      setCreateError(err?.message || "Failed to create account.");
+    } finally {
+      setCreateSubmitting(false);
+    }
+  }
+
+  async function handleDeleteAccount(accountIdToDelete: string) {
+    const orderCount = orders.filter((o) => o.accountId === accountIdToDelete).length;
+    const ok = window.confirm(
+      orderCount > 0
+        ? `Delete account ${accountIdToDelete}?\n\nThis account has ${orderCount} non-cancelled order(s) and they will be left as-is.`
+        : `Delete account ${accountIdToDelete}?`,
+    );
+    if (!ok) return;
+
+    setDeleteAccountId(accountIdToDelete);
+    try {
+      // Delete account
+      await deleteDoc(doc(db, "accounts", accountIdToDelete));
+
+      // Also delete any users linked to this account (best-effort)
+      try {
+        const usersSnap = await getDocs(
+          query(collection(db, "users"), where("accountId", "==", accountIdToDelete)),
+        );
+        await Promise.all(
+          usersSnap.docs.map((u) => deleteDoc(doc(db, "users", u.id))),
+        );
+      } catch (err) {
+        console.warn("Could not delete linked users:", err);
+      }
+
+      await fetchData();
+      alert("Account deleted successfully.");
+    } catch (err) {
+      console.error("Error deleting account:", err);
+      alert("Failed to delete account.");
+    } finally {
+      setDeleteAccountId(null);
+    }
+  }
+
   const filteredAccounts = accounts.filter((account) =>
     account.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -295,6 +475,243 @@ function ManageAccountsContent() {
               />
             </div>
 
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateError(null);
+                  setShowCreateAccount(true);
+                }}
+                className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-black shadow-soft transition hover:bg-accent-soft"
+              >
+                Add Account
+              </button>
+            </div>
+
+            {showCreateAccount && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-neutral-900 p-6 glass-strong shadow-2xl">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Create Account</h2>
+                      <p className="mt-1 text-sm text-neutral-400">
+                        Adds a document to `accounts` (and optionally a `users` document).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateAccount(false)}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-neutral-300 hover:border-white/20 hover:bg-white/10"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleCreateAccount();
+                    }}
+                    className="mt-5 space-y-4"
+                  >
+                    {createError && (
+                      <p className="text-sm text-red-400">{createError}</p>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Company name
+                        </label>
+                        <input
+                          value={createForm.name}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({ ...f, name: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                          placeholder="e.g. Zjon's"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Optional accountId
+                        </label>
+                        <input
+                          value={createForm.accountId}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({
+                              ...f,
+                              accountId: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                          placeholder="e.g. acct_..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Account type
+                        </label>
+                        <select
+                          value={createForm.accountType}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({
+                              ...f,
+                              accountType: e.target.value as "DEALER" | "DISTRIBUTOR",
+                            }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                        >
+                          <option value="DEALER">DEALER</option>
+                          <option value="DISTRIBUTOR">DISTRIBUTOR</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Tier ID
+                        </label>
+                        <input
+                          value={createForm.tierId}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({ ...f, tierId: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                          placeholder="TIER_A"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Currency
+                        </label>
+                        <select
+                          value={createForm.currency}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({
+                              ...f,
+                              currency: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                        >
+                          <option value="AUD">AUD</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Discount % off RRP
+                        </label>
+                        <select
+                          value={createForm.discountPercent}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({
+                              ...f,
+                              discountPercent: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                        >
+                          <option value={0}>Not set</option>
+                          <option value={30}>30% off RRP</option>
+                          <option value={35}>35% off RRP</option>
+                          <option value={50}>50% off RRP</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Territory (optional)
+                      </label>
+                      <input
+                        value={createForm.territory}
+                        onChange={(e) =>
+                          setCreateForm((f) => ({ ...f, territory: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                        placeholder="e.g. EU"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Optional user UID (for users doc)
+                        </label>
+                        <input
+                          value={createForm.uid}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({ ...f, uid: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                          placeholder="auth uid"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                          Optional email (required if UID provided)
+                        </label>
+                        <input
+                          value={createForm.email}
+                          onChange={(e) =>
+                            setCreateForm((f) => ({ ...f, email: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                          placeholder="dealer@example.com"
+                          type="email"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Contact name (optional)
+                      </label>
+                      <input
+                        value={createForm.contactName}
+                        onChange={(e) =>
+                          setCreateForm((f) => ({
+                            ...f,
+                            contactName: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
+                        placeholder="e.g. John Smith"
+                      />
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        type="submit"
+                        disabled={createSubmitting}
+                        className="flex-1 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft disabled:opacity-50"
+                      >
+                        {createSubmitting ? "Creating..." : "Create account"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateAccount(false)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-white/10"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {/* Accounts List */}
             {loading ? (
               <div className="flex items-center justify-center py-12">
@@ -359,6 +776,14 @@ function ManageAccountsContent() {
                         >
                           View Details
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAccount(account.id)}
+                          disabled={deleteAccountId === account.id}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:border-red-500/30 hover:bg-red-500/20 disabled:opacity-50"
+                        >
+                          {deleteAccountId === account.id ? "Deleting..." : "Delete"}
+                        </button>
                       </div>
                     </div>
                   </div>
