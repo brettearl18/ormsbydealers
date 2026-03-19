@@ -28,7 +28,8 @@ export default function CartPage() {
 
   // Fetch account (for discount %), prices, and guitars for all cart items
   useEffect(() => {
-    if (!user?.accountId || items.length === 0) {
+    const accountId = user?.accountId;
+    if (!accountId || items.length === 0) {
       setLoadingPrices(false);
       return;
     }
@@ -37,7 +38,7 @@ export default function CartPage() {
       setLoadingPrices(true);
       try {
         const uniqueGuitarIds = Array.from(new Set(items.map((item) => item.guitarId)));
-        const accountSnap = await getDoc(doc(db, "accounts", user.accountId!));
+        const accountSnap = await getDoc(doc(db, "accounts", accountId));
         if (accountSnap.exists()) {
           setAccount({ id: accountSnap.id, ...accountSnap.data() } as AccountDoc & { id: string });
         } else {
