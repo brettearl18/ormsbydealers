@@ -114,19 +114,36 @@ export function getDealerPriceFromRRP(rrp: number, discountPercent: number): num
   return rrp * (1 - pct / 100);
 }
 
-/** Get RRP for a guitar variant (base RRP + option rrpAdjustments). */
+type OptionValueForRrp = {
+  valueId: string;
+  rrpAdjustment?: number;
+  /** Legacy: dealer AUD add-on; converted to RRP equivalent when rrpAdjustment is unset */
+  priceAdjustment?: number;
+};
+
+/** Get RRP for a guitar variant (base RRP + option adjustments). Prefer rrpAdjustment; else map priceAdjustment to RRP using discount %. */
 export function getRRPForVariant(
   prices: PricesDoc | null,
-  options?: Array<{ optionId: string; values: Array<{ valueId: string; rrpAdjustment?: number }> }> | null,
-  selectedOptions?: Record<string, string> | null
+  options?: Array<{ optionId: string; values: OptionValueForRrp[] }> | null,
+  selectedOptions?: Record<string, string> | null,
+  discountPercent: number = 0,
 ): number | null {
   if (!prices || prices.rrp == null) return null;
   let rrp = prices.rrp;
-  if (options && selectedOptions) {
-    for (const opt of options) {
-      const valueId = selectedOptions[opt.optionId];
-      const val = opt.values.find((v) => v.valueId === valueId);
-      if (val?.rrpAdjustment != null) rrp += val.rrpAdjustment;
+  if (!options || !selectedOptions) return rrp;
+
+  const pct = Math.max(0, Math.min(100, discountPercent));
+  const dealerFactor = 1 - pct / 100;
+
+  for (const opt of options) {
+    const valueId = selectedOptions[opt.optionId];
+    if (!valueId) continue;
+    const val = opt.values.find((v) => v.valueId === valueId);
+    if (!val) continue;
+    if (val.rrpAdjustment != null) {
+      rrp += val.rrpAdjustment;
+    } else if (val.priceAdjustment != null && val.priceAdjustment !== 0 && dealerFactor > 0) {
+      rrp += val.priceAdjustment / dealerFactor;
     }
   }
   return rrp;

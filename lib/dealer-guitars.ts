@@ -32,6 +32,10 @@ export interface DealerGuitar {
     value: number | null;
     source: string | null;
   };
+  /** RRP (AUD) for display with strikethrough when dealer has discount */
+  rrp?: number | null;
+  /** Account discount % so cards can show "X% off" */
+  discountPercent?: number;
 }
 
 export async function fetchDealerGuitars(params: {
@@ -69,7 +73,7 @@ export async function fetchDealerGuitars(params: {
     const availability = availabilitySnap.exists()
       ? (availabilitySnap.data() as AvailabilityDoc)
       : {
-          state: "IN_STOCK" as AvailabilityState,
+          state: "PREORDER" as AvailabilityState,
           qtyAvailable: 0,
           qtyAllocated: 0,
         };
@@ -96,6 +100,8 @@ export async function fetchDealerGuitars(params: {
         value,
         source: discountPercent > 0 ? "DISCOUNT" : "RRP",
       },
+      rrp: rrp ?? null,
+      discountPercent,
     });
   }
 

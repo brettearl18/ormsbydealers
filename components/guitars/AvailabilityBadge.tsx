@@ -12,7 +12,7 @@ export function AvailabilityBadge({ state, etaDate, batchName }: Props) {
 
   if (state === "IN_STOCK") {
     return (
-      <span className={`${common} bg-emerald-500/10 text-emerald-300`}>
+      <span className={`${common} bg-emerald-500/20 text-emerald-400`}>
         In stock
       </span>
     );
@@ -20,16 +20,17 @@ export function AvailabilityBadge({ state, etaDate, batchName }: Props) {
 
   if (state === "PREORDER") {
     return (
-      <span className={`${common} bg-amber-500/10 text-amber-300`}>
-        Preorder{etaDate ? ` · ETA ${new Date(etaDate).toLocaleDateString()}` : ""}
+      <span className={`${common} bg-amber-500/20 text-amber-400`}>
+        Pre-order
+        {etaDate ? ` · ETA ${new Date(etaDate).toLocaleDateString()}` : ""}
       </span>
     );
   }
 
   // BATCH
   return (
-    <span className={`${common} bg-sky-500/10 text-sky-300`}>
-      Batch {batchName ?? ""}{" "}
+    <span className={`${common} bg-sky-500/20 text-sky-400`}>
+      Batch {batchName ?? ""}
       {etaDate ? ` · ETA ${new Date(etaDate).toLocaleDateString()}` : ""}
     </span>
   );

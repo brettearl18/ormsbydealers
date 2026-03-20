@@ -21,6 +21,12 @@ interface Props {
     currency: string;
     note?: string | null;
   };
+  /** RRP (same currency as price) — shown crossed out when discountPercent > 0 */
+  rrp?: number | null;
+  /** Dealer discount % — shown as "X% off" when > 0 */
+  discountPercent?: number;
+  /** When displaying in non-AUD currency, pass AUD price for add-to-cart so cart stays in base currency */
+  unitPriceAud?: number | null;
   onQuickView?: () => void;
 }
 
@@ -32,21 +38,25 @@ export function GuitarCard({
   heroImage,
   availability,
   price,
+  rrp,
+  discountPercent,
+  unitPriceAud,
   onQuickView,
 }: Props) {
   const { addItem } = useCart();
+  const cartPrice = unitPriceAud ?? price.value;
 
   const onAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (price.value == null) return;
+    if (cartPrice == null) return;
     addItem(
       {
         guitarId: id,
         sku,
         name,
         imageUrl: heroImage ?? null,
-        unitPrice: price.value,
+        unitPrice: cartPrice,
         priceSource: null,
       },
       1,
@@ -62,7 +72,7 @@ export function GuitarCard({
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-3xl glass-strong shadow-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl hover:shadow-accent/20">
       <Link href={`/dealer/guitars/${id}`} className="block">
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-900">
+        <div className="relative aspect-[4/6] w-full overflow-hidden bg-neutral-900">
           {heroImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -123,11 +133,31 @@ export function GuitarCard({
         />
 
         <div className="mt-auto flex items-end justify-between gap-3 pt-2">
-          <PriceTag
-            price={price.value}
-            currency={price.currency}
-            note={price.note}
-          />
+          <div className="flex flex-col gap-0.5">
+            {rrp != null && rrp > 0 && (discountPercent ?? 0) > 0 && (
+              <span className="text-xs text-neutral-500 line-through">
+                {new Intl.NumberFormat("en-AU", {
+                  style: "currency",
+                  currency: price.currency,
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }).format(rrp)}{" "}
+                RRP
+              </span>
+            )}
+            <div className="flex items-baseline gap-2">
+              <PriceTag
+                price={price.value}
+                currency={price.currency}
+                note={price.note}
+              />
+              {(discountPercent ?? 0) > 0 && (
+                <span className="text-xs font-medium text-accent">
+                  {discountPercent}% off
+                </span>
+              )}
+            </div>
+          </div>
           <Link
             href={`/dealer/guitars/${id}`}
             className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-xs font-bold shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-accent/30"

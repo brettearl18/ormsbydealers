@@ -8,11 +8,14 @@ import { PriceTag } from "./PriceTag";
 import { useCart } from "@/lib/cart-context";
 import Link from "next/link";
 import { DealerGuitar } from "@/lib/dealer-guitars";
+import type { FxRatesDoc } from "@/lib/types";
 
 interface Props {
   guitar: DealerGuitar | null;
   currency: string;
   tierId: string | null;
+  /** FX rates (AUD base) for displaying price in dealer currency */
+  fxRates?: FxRatesDoc | null;
   priceNote: string | null;
   isOpen: boolean;
   onClose: () => void;
@@ -22,6 +25,7 @@ export function QuickViewModal({
   guitar,
   currency,
   tierId,
+  fxRates,
   priceNote,
   isOpen,
   onClose,
@@ -29,6 +33,12 @@ export function QuickViewModal({
   const { addItem } = useCart();
 
   if (!guitar) return null;
+
+  const rate = currency !== "AUD" && fxRates?.rates[currency];
+  const displayPrice =
+    guitar.price.value != null && rate
+      ? guitar.price.value * rate
+      : guitar.price.value;
 
   const onAddToCart = () => {
     if (guitar.price.value == null) return;
@@ -117,7 +127,7 @@ export function QuickViewModal({
                     />
 
                     <PriceTag
-                      price={guitar.price.value}
+                      price={displayPrice}
                       currency={currency}
                       note={priceNote}
                     />

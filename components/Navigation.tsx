@@ -26,6 +26,7 @@ export function Navigation() {
   const [mobileOpen, setMobileOpen] = useState(false);
    const [branding, setBranding] = useState<AdminBrandingSettings | null>(null);
 
+  // Fetch branding once (adminSettings is readable by everyone for nav/landing)
   useEffect(() => {
     async function loadBranding() {
       try {
@@ -45,7 +46,6 @@ export function Navigation() {
         setBranding(DEFAULT_BRANDING);
       }
     }
-
     loadBranding();
   }, []);
 
@@ -188,6 +188,12 @@ export function Navigation() {
                 className="rounded-xl border border-transparent px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-white/10 hover:text-white hover:scale-105"
               >
                 Orders
+              </Link>
+              <Link
+                href="/settings"
+                className="rounded-xl border border-transparent px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-400 transition-all duration-300 hover:border-white/10 hover:text-white hover:scale-105"
+              >
+                Settings
               </Link>
             </>
           )}
@@ -348,6 +354,13 @@ export function Navigation() {
                     onClick={() => setMobileOpen(false)}
                   >
                     Orders
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="rounded-lg px-3 py-2 text-neutral-300 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Settings
                   </Link>
                   <Link
                     href="/cart"

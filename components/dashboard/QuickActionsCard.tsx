@@ -4,6 +4,7 @@ import {
   DocumentTextIcon,
   ArrowDownTrayIcon,
   Cog6ToothIcon,
+  ShoppingCartIcon,
 } from "@heroicons/react/24/outline";
 
 export function QuickActionsCard() {
@@ -13,6 +14,12 @@ export function QuickActionsCard() {
       href: "/dealer",
       icon: ShoppingBagIcon,
       primary: true,
+    },
+    {
+      label: "Cart & Checkout",
+      href: "/cart",
+      icon: ShoppingCartIcon,
+      primary: false,
     },
     {
       label: "View Orders",
@@ -28,53 +35,57 @@ export function QuickActionsCard() {
       disabled: true,
     },
     {
-      label: "Account Settings",
-      href: "#",
+      label: "Settings",
+      href: "/settings",
       icon: Cog6ToothIcon,
       primary: false,
-      disabled: true,
     },
   ];
 
   return (
-    <div className="glass-strong rounded-3xl p-6 shadow-xl">
-      <h3 className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-neutral-400">
-        Quick Actions
+    <div className="glass-strong h-full rounded-2xl p-4 shadow-xl sm:p-5">
+      <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">
+        Quick actions
       </h3>
-      <div className="space-y-3">
+      <div className="flex flex-col gap-2">
         {actions.map((action) => {
           const Icon = action.icon;
-          const className = `group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-5 py-4 text-sm font-semibold transition-all duration-300 ${
+          const className = `group relative flex items-center gap-2.5 overflow-hidden rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
             action.primary
-              ? "border-accent/30 bg-gradient-to-r from-accent/10 to-accent/5 text-accent hover:border-accent/50 hover:scale-105 hover:shadow-lg hover:shadow-accent/20"
-              : "glass border-white/10 text-white hover:border-accent/30 hover:scale-105 hover:shadow-lg"
-          } ${
-            action.disabled
-              ? "cursor-not-allowed opacity-40"
-              : "cursor-pointer"
-          }`;
+              ? "border-accent/30 bg-accent/10 text-accent hover:border-accent/50 hover:bg-accent/15"
+              : "border-white/10 bg-black/20 text-white hover:border-white/20 hover:bg-white/5"
+          } ${action.disabled ? "cursor-not-allowed opacity-40" : ""}`;
 
           if (action.disabled) {
             return (
               <div key={action.label} className={className}>
-                <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
-                <span>{action.label}</span>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{action.label}</span>
               </div>
             );
           }
 
           return (
             <Link key={action.label} href={action.href} className={className}>
-              <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
-              <span>{action.label}</span>
-              {action.primary && (
-                <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/10 to-accent/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-              )}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{action.label}</span>
             </Link>
           );
         })}
       </div>
+      <p className="mt-3 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-neutral-500">
+        <Link href="/dealer" className="text-accent-soft hover:underline">
+          Browse
+        </Link>
+        {" → "}
+        <Link href="/cart" className="text-accent-soft hover:underline">
+          Cart
+        </Link>
+        {" → "}
+        <Link href="/checkout" className="text-accent-soft hover:underline">
+          Place order
+        </Link>
+      </p>
     </div>
   );
 }
-

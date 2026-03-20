@@ -3,7 +3,8 @@
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { AccountDoc, OrderDoc, TierDoc, OrderLineDoc, GuitarDoc, ShippingAddress } from "@/lib/types";
 import Link from "next/link";
 import {
@@ -13,6 +14,7 @@ import {
   MapPinIcon,
   TagIcon,
   DocumentTextIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline";
 
 const STATUS_COLORS = {
@@ -111,6 +113,8 @@ export default function AccountDetailPage({
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<Partial<AccountDoc> & { id?: string }>({});
+  const [resendEmailLoading, setResendEmailLoading] = useState(false);
+  const [resendEmailMessage, setResendEmailMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAccount() {
@@ -836,6 +840,59 @@ export default function AccountDetailPage({
                 >
                   Edit Account
                 </button>
+                <button
+                  type="button"
+                  disabled={
+                    resendEmailLoading ||
+                    !(account as AccountDoc).contactEmail?.trim()
+                  }
+                  onClick={async () => {
+                    setResendEmailMessage(null);
+                    setResendEmailLoading(true);
+                    try {
+                      const resend = httpsCallable<
+                        { accountId: string; email?: string },
+                        { emailSent: boolean }
+                      >(functions, "resendDealerLoginEmail");
+                      const res = await resend({
+                        accountId,
+                        email: (account as AccountDoc).contactEmail?.trim() || undefined,
+                      });
+                      const data = res.data as { emailSent: boolean };
+                      setResendEmailMessage(
+                        data.emailSent
+                          ? "Login email sent successfully."
+                          : "Sending failed (check Mailgun/SMTP settings).",
+                      );
+                    } catch (err: any) {
+                      setResendEmailMessage(
+                        err?.message || "Failed to resend login email.",
+                      );
+                    } finally {
+                      setResendEmailLoading(false);
+                    }
+                  }}
+                  className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <EnvelopeIcon className="mr-2 inline h-4 w-4" />
+                  {resendEmailLoading ? "Sending…" : "Resend login email"}
+                </button>
+                {resendEmailMessage && (
+                  <p
+                    className={
+                      resendEmailMessage.startsWith("Login email sent")
+                        ? "text-sm text-green-400"
+                        : "text-sm text-amber-400"
+                    }
+                  >
+                    {resendEmailMessage}
+                  </p>
+                )}
+                {!(account as AccountDoc).contactEmail?.trim() && (
+                  <p className="text-xs text-neutral-500">
+                    Set contact email on the account to resend login email.
+                  </p>
+                )}
                 <button className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10">
                   Send Message
                 </button>

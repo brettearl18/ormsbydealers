@@ -13,6 +13,8 @@ import { AccountInfoCard } from "@/components/dashboard/AccountInfoCard";
 import { GuitarCard } from "@/components/guitars/GuitarCard";
 import { fetchDealerGuitars, type DealerGuitar } from "@/lib/dealer-guitars";
 import Link from "next/link";
+import type { FxRatesDoc } from "@/lib/types";
+import { fetchDealerFxRates } from "@/lib/fx-client";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -26,14 +28,25 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
   const [guitars, setGuitars] = useState<DealerGuitar[]>([]);
   const [account, setAccount] = useState<AccountDoc | null>(null);
+  const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    fetchDealerFxRates(db).then((data) => {
+      if (!cancelled && data) setFxRates(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (authLoading) return;
     if (!user) {
-      router.push("/login");
-      return;
+      const t = setTimeout(() => router.push("/login"), 200);
+      return () => clearTimeout(t);
     }
     if (!user.accountId || !user.tierId || !user.currency) {
       router.push("/dealer");
@@ -116,11 +129,19 @@ export default function DashboardPage() {
   const inProductionOrders = orders.filter((o) => o.status === "IN_PRODUCTION").length;
   const shippedOrders = orders.filter((o) => o.status === "SHIPPED").length;
 
+  function formatMoney(amount: number, currency: string) {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
   return (
-    <main className="flex flex-1 flex-col gap-8">
-      {/* Welcome Header - Modern 2025 */}
-      <header className="animate-fade-in mb-[10px]">
-        <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
+    <main className="flex flex-1 flex-col gap-5 sm:gap-6">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
             Welcome back
           </span>
@@ -128,10 +149,17 @@ export default function DashboardPage() {
             <span className="text-accent">, {account.name.split(" ")[0]}</span>
           )}
         </h1>
-        <p className="mt-3 text-base text-neutral-400 sm:text-lg">
-          Here's what's happening with your account
+        <p className="mt-1.5 text-sm text-neutral-400">
+          Here&apos;s what&apos;s happening with your account
         </p>
       </header>
+
+      <AccountInfoCard
+        user={user}
+        accountName={account?.name}
+        territory={account?.territory}
+        discountPercent={account?.discountPercent ?? null}
+      />
 
       {error && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
@@ -141,8 +169,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatsCard
           label="Total Orders"
           value={totalOrders}
@@ -165,28 +192,21 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left: Quick Actions & Account Info */}
-        <div className="space-y-6 lg:col-span-1">
+      {/* Quick actions + orders + preview — equal visual weight, aligned to top */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-5">
+        <div className="lg:col-span-3">
           <QuickActionsCard />
-          <AccountInfoCard
-            user={user}
-            accountName={account?.name}
-            territory={account?.territory}
-          />
         </div>
 
-        {/* Center: Recent Orders */}
-        <div className="lg:col-span-1">
-          <div className="glass-strong rounded-3xl p-6 shadow-xl">
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-400">
-                Recent Orders
+        <div className="lg:col-span-5">
+          <div className="glass-strong h-full min-h-[200px] rounded-2xl p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">
+                Recent orders
               </h3>
               <Link
                 href="/orders"
-                className="text-xs font-semibold text-accent-soft transition hover:text-accent hover:underline"
+                className="shrink-0 text-xs font-semibold text-accent-soft hover:text-accent hover:underline"
               >
                 View all →
               </Link>
@@ -200,109 +220,120 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right: Featured Products */}
-        <div className="lg:col-span-1">
-          <div className="glass-strong rounded-3xl p-6 shadow-xl">
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-400">
-                Available to Order
+        <div className="lg:col-span-4">
+          <div className="glass-strong h-full min-h-[200px] rounded-2xl p-4 shadow-xl sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">
+                Available to order
               </h3>
               <Link
                 href="/dealer"
-                className="text-xs font-semibold text-accent-soft transition hover:text-accent hover:underline"
+                className="shrink-0 text-xs font-semibold text-accent-soft hover:text-accent hover:underline"
               >
                 View all →
               </Link>
             </div>
             {guitars.length > 0 ? (
-              <div className="space-y-3">
-                {guitars.slice(0, 3).map((g) => (
-                  <Link
-                    key={g.id}
-                    href={`/dealer/guitars/${g.id}`}
-                    className="group block overflow-hidden rounded-2xl border border-white/10 glass p-4 transition-all duration-300 hover:border-accent/30 hover:scale-[1.02] hover:shadow-lg"
-                  >
-                    <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-2">
+                {guitars.slice(0, 3).map((g) => {
+                  const rate =
+                    user.currency &&
+                    user.currency !== "AUD" &&
+                    fxRates?.rates[user.currency];
+                  const displayValue =
+                    g.price.value != null && rate
+                      ? g.price.value * rate
+                      : g.price.value;
+                  return (
+                    <Link
+                      key={g.id}
+                      href={`/dealer/guitars/${g.id}`}
+                      className="group flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-2.5 transition hover:border-accent/30 hover:bg-white/[0.04]"
+                    >
                       {g.heroImage && (
-                        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-neutral-900 ring-2 ring-white/5 transition-all duration-300 group-hover:ring-accent/30">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-neutral-900">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={g.heroImage}
                             alt={g.name}
-                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                            className="h-full w-full object-cover transition group-hover:scale-105"
                           />
                         </div>
                       )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white">
-                          {g.name}
-                        </p>
-                        <p className="mt-0.5 text-xs text-neutral-400">
-                          {g.sku}
-                        </p>
-                        {g.price.value && (
-                          <p className="mt-1 text-xs font-semibold text-accent">
-                            {user.currency === "USD" ? "$" : user.currency}{" "}
-                            {g.price.value.toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">{g.name}</p>
+                        <p className="truncate text-[11px] text-neutral-500">{g.sku}</p>
+                        {displayValue != null && (
+                          <p className="mt-0.5 text-xs font-semibold text-accent">
+                            {formatMoney(displayValue, user.currency!)}
                           </p>
                         )}
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
-              <p className="text-sm text-neutral-400">
-                No guitars available
-              </p>
+              <p className="text-sm text-neutral-400">No guitars available</p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Featured Products Grid */}
       {guitars.length > 0 && (
-        <section className="animate-fade-in" style={{ animationDelay: '0.3s' }}>
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+        <section>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
               <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
-                Featured Guitars
+                Featured guitars
               </span>
             </h2>
             <Link
               href="/dealer"
-              className="text-sm font-semibold text-accent-soft transition hover:text-accent hover:underline"
+              className="text-sm font-semibold text-accent-soft hover:text-accent hover:underline"
             >
-              Browse all guitars →
+              Browse all →
             </Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {guitars.slice(0, 6).map((g) => (
-              <GuitarCard
-                key={g.id}
-                id={g.id}
-                sku={g.sku}
-                name={g.name}
-                series={g.series}
-                heroImage={g.heroImage}
-                availability={g.availability}
-                price={{
-                  value: g.price.value,
-                  currency: user.currency!,
-                  note:
-                    g.price.source === "PROMO"
-                      ? "Promo price"
-                      : g.price.source === "ACCOUNT_OVERRIDE"
-                      ? "Account-specific price"
-                      : g.price.source === "TIER"
-                      ? `Tier ${user.tierId} price`
-                      : null,
-                }}
-              />
-            ))}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {guitars.slice(0, 6).map((g) => {
+              const rate =
+                user.currency &&
+                user.currency !== "AUD" &&
+                fxRates?.rates[user.currency];
+              const displayValue =
+                g.price.value != null && rate
+                  ? g.price.value * rate
+                  : g.price.value;
+              const displayRrp =
+                g.rrp != null && rate ? g.rrp * rate : g.rrp ?? null;
+              return (
+                <GuitarCard
+                  key={g.id}
+                  id={g.id}
+                  sku={g.sku}
+                  name={g.name}
+                  series={g.series}
+                  heroImage={g.heroImage}
+                  availability={g.availability}
+                  price={{
+                    value: displayValue,
+                    currency: user.currency!,
+                    note:
+                      g.price.source === "PROMO"
+                        ? "Promo price"
+                        : g.price.source === "ACCOUNT_OVERRIDE"
+                        ? "Account-specific price"
+                        : g.price.source === "TIER"
+                        ? `Tier ${user.tierId} price`
+                        : null,
+                  }}
+                  rrp={displayRrp}
+                  discountPercent={g.discountPercent}
+                  unitPriceAud={g.price.value}
+                />
+              );
+            })}
           </div>
         </section>
       )}

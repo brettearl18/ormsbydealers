@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   ReactNode,
 } from "react";
@@ -28,38 +29,63 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Give Firebase time to restore session from persistence before treating null as signed out
+const AUTH_RESTORE_DELAY_MS = 800;
+
+async function sessionUserFromFirebaseUser(firebaseUser: AppUser): Promise<SessionUser> {
+  const token = await firebaseUser.getIdTokenResult();
+  const role = (token.claims.role as Role) ?? null;
+  const accountId = (token.claims.accountId as string | undefined) ?? null;
+  const tierId = (token.claims.tierId as string | undefined) ?? null;
+  const currency = (token.claims.currency as string | undefined) ?? null;
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email,
+    role,
+    accountId: accountId ?? null,
+    tierId: tierId ?? null,
+    currency: currency ?? null,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const nullTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser: AppUser | null) => {
+      if (nullTimeoutRef.current) {
+        clearTimeout(nullTimeoutRef.current);
+        nullTimeoutRef.current = null;
+      }
+
       if (!firebaseUser) {
         setUser(null);
-        setLoading(false);
+        nullTimeoutRef.current = setTimeout(async () => {
+          nullTimeoutRef.current = null;
+          // Re-check in case persistence restored the session after the first null
+          const current = auth.currentUser;
+          if (current) {
+            const session = await sessionUserFromFirebaseUser(current);
+            setUser(session);
+          }
+          setLoading(false);
+        }, AUTH_RESTORE_DELAY_MS);
         return;
       }
 
-      // For now, derive role/accountId from custom claims if present.
-      // Later we can hydrate from Firestore `users/{uid}`.
-      const token = await firebaseUser.getIdTokenResult();
-      const role = (token.claims.role as Role) ?? null;
-      const accountId = (token.claims.accountId as string | undefined) ?? null;
-      const tierId = (token.claims.tierId as string | undefined) ?? null;
-      const currency = (token.claims.currency as string | undefined) ?? null;
-
-      setUser({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        role,
-        accountId: accountId ?? null,
-        tierId: tierId ?? null,
-        currency: currency ?? null,
-      });
+      const session = await sessionUserFromFirebaseUser(firebaseUser);
+      setUser(session);
       setLoading(false);
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+      if (nullTimeoutRef.current) {
+        clearTimeout(nullTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (

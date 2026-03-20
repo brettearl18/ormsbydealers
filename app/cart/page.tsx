@@ -6,19 +6,44 @@ import { useCart, CartItem } from "@/lib/cart-context";
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { CartItemSkeleton } from "@/components/LoadingSkeleton";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PricesDoc, TierDoc, GuitarDoc, AccountDoc } from "@/lib/types";
+import { PricesDoc, GuitarDoc, AccountDoc, FxRatesDoc } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { fetchDealerFxRates } from "@/lib/fx-client";
+
+function formatMoney(amount: number, currency: string) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
 
 export default function CartPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { items, updateQty, removeItem, subtotal } = useCart();
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
+  const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
   const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loadingPrices, setLoadingPrices] = useState(true);
+
+  const displayCurrency = user?.currency ?? account?.currency ?? "AUD";
+  const fxRate =
+    displayCurrency !== "AUD" ? fxRates?.rates[displayCurrency] : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDealerFxRates(db).then((data) => {
+      if (!cancelled && data) setFxRates(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -78,20 +103,29 @@ export default function CartPage() {
     return items.map((item) => {
       const prices = pricesMap.get(item.guitarId);
       const guitar = guitarsMap.get(item.guitarId);
-      const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, item.selectedOptions ?? null);
+      const rrp = getRRPForVariant(
+        prices ?? null,
+        guitar?.options ?? null,
+        item.selectedOptions ?? null,
+        account?.discountPercent ?? 0,
+      );
       if (rrp == null) return item;
       const unitPrice = getDealerPriceFromRRP(rrp, discountPercent);
       return { ...item, unitPrice };
     });
   }, [items, pricesMap, guitarsMap, account?.discountPercent, user?.accountId, loadingPrices]);
 
-  // Recalculate subtotal with current prices
+  // Subtotal in AUD (base)
   const currentSubtotal = useMemo(() => {
     return itemsWithCurrentPrices.reduce(
       (sum, item) => sum + item.unitPrice * item.qty,
       0,
     );
   }, [itemsWithCurrentPrices]);
+
+  // Display subtotal in dealer currency when FX available
+  const displaySubtotal =
+    fxRate != null ? currentSubtotal * fxRate : currentSubtotal;
 
   if (authLoading) {
     return (
@@ -276,21 +310,23 @@ export default function CartPage() {
                   </div>
 
                   <div className="text-right">
-                    <p className="text-sm font-medium text-white">
-                      {user.currency === "USD" ? "$" : user.currency}{" "}
-                      {(item.unitPrice * item.qty).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </p>
-                    <p className="text-xs text-neutral-500">
-                      {user.currency === "USD" ? "$" : ""}
-                      {item.unitPrice.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}{" "}
-                      each
-                    </p>
+                    {(() => {
+                      const lineTotalAud = item.unitPrice * item.qty;
+                      const displayTotal =
+                        fxRate != null ? lineTotalAud * fxRate : lineTotalAud;
+                      const displayUnit =
+                        fxRate != null ? item.unitPrice * fxRate : item.unitPrice;
+                      return (
+                        <>
+                          <p className="text-sm font-medium text-white">
+                            {formatMoney(displayTotal, displayCurrency)}
+                          </p>
+                          <p className="text-xs text-neutral-500">
+                            {formatMoney(displayUnit, displayCurrency)} each
+                          </p>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -310,11 +346,7 @@ export default function CartPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-400">Subtotal</span>
                 <span className="font-medium text-white">
-                  {user.currency === "USD" ? "$" : user.currency}{" "}
-                  {currentSubtotal.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                  {formatMoney(displaySubtotal, displayCurrency)}
                 </span>
               </div>
             </div>
@@ -323,11 +355,7 @@ export default function CartPage() {
               <div className="flex justify-between text-base font-semibold">
                 <span className="text-white">Total</span>
                 <span className="text-white">
-                  {user.currency === "USD" ? "$" : user.currency}{" "}
-                  {currentSubtotal.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                  {formatMoney(displaySubtotal, displayCurrency)}
                 </span>
               </div>
 
@@ -335,12 +363,8 @@ export default function CartPage() {
                 href="/checkout"
                 className="block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-black shadow-soft transition-all hover:scale-[1.02] hover:bg-accent-soft hover:shadow-soft hover:shadow-accent/30"
               >
-                Proceed to checkout
+                Place order
               </Link>
-
-              <p className="text-xs text-neutral-500">
-                Shipping and taxes calculated at checkout
-              </p>
             </div>
           </div>
         </div>

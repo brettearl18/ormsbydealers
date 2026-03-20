@@ -299,8 +299,9 @@ export default function OrderDetailPage({
       selectedAddPrices,
       selectedAddGuitar.options ?? null,
       selectedAddOptions,
+      discountPercent,
     );
-  }, [selectedAddPrices, selectedAddGuitar, selectedAddOptions]);
+  }, [selectedAddPrices, selectedAddGuitar, selectedAddOptions, discountPercent]);
 
   const addUnitPrice = useMemo(() => {
     if (addRrp == null) return null;

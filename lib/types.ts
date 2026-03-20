@@ -30,6 +30,10 @@ export interface AccountDoc {
   contactPhone?: string;
   billingAddress?: ShippingAddress;
   shippingAddress?: ShippingAddress;
+  /** Dealer-set label for estimated tax/tariff (e.g. "VAT", "GST") — for cost estimation only. */
+  estimatedTaxLabel?: string;
+  /** Dealer-set tax/tariff % for cost estimation (e.g. 20 for 20% VAT). Applied later. */
+  estimatedTaxPercent?: number;
   notes?: string;
 }
 
@@ -253,6 +257,10 @@ export interface AdminEmailTemplateSettings {
   welcomeBody?: string;
   orderConfirmationSubject?: string;
   orderConfirmationBody?: string;
+  statusChangeSubject?: string;
+  statusChangeBody?: string;
+  passwordResetSubject?: string;
+  passwordResetBody?: string;
 }
 
 export interface AdminMailgunSettings {

@@ -275,7 +275,12 @@ export default function AdminOrderDetailPage({
       for (const line of orderLines) {
         const prices = pricesMap.get(line.guitarId);
         const guitar = guitarsMap.get(line.guitarId);
-        const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, line.selectedOptions ?? null);
+        const rrp = getRRPForVariant(
+          prices ?? null,
+          guitar?.options ?? null,
+          line.selectedOptions ?? null,
+          discountPercent,
+        );
         const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
         const lineTotal = unitPrice * line.qty;
         newSubtotal += lineTotal;
@@ -332,6 +337,7 @@ export default function AdminOrderDetailPage({
           prices ?? null,
           guitar?.options ?? null,
           line.selectedOptions ?? null,
+          discountPercent,
         );
 
         const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
@@ -387,7 +393,12 @@ export default function AdminOrderDetailPage({
 
       const guitar = guitarSnap.data() as GuitarDoc;
       const prices = pricesSnap.data() as PricesDoc;
-      const rrp = getRRPForVariant(prices, guitar.options ?? null, req.selectedOptions ?? null);
+      const rrp = getRRPForVariant(
+        prices,
+        guitar.options ?? null,
+        req.selectedOptions ?? null,
+        discountPercent,
+      );
       const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : 0;
       const lineTotal = unitPrice * req.qty;
 
@@ -684,6 +695,7 @@ export default function AdminOrderDetailPage({
                                 prices ?? null,
                                 guitar?.options ?? null,
                                 line.selectedOptions ?? null,
+                                discountPercent,
                               );
                               const currentUnit =
                                 rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : null;

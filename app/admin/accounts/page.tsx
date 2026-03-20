@@ -26,9 +26,34 @@ import {
   CalendarIcon,
   BellIcon,
   UserGroupIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+
+/** Generate a URL-safe, readable account ID from company name; ensure unique in Firestore. */
+function slugFromCompanyName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50);
+  return slug || "account";
+}
+
+async function getUniqueAccountId(companyName: string): Promise<string> {
+  const base = slugFromCompanyName(companyName);
+  let candidate = base;
+  let n = 1;
+  while (true) {
+    const ref = doc(db, "accounts", candidate);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return candidate;
+    candidate = n === 1 ? `${base}-2` : `${base}-${n + 1}`;
+    n += 1;
+  }
+}
 
 interface AccountWithUsers extends AccountDoc {
   id: string;
@@ -79,6 +104,7 @@ function ManageAccountsContent() {
     contactName: "",
   });
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
+  const [resendEmailAccountId, setResendEmailAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -152,13 +178,15 @@ function ManageAccountsContent() {
       const auth = getAuth();
       const currentUser = auth.currentUser;
 
-      // Create the account document
-      const accountId = `acct_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Create the account document with a readable ID from company name
+      const accountId = await getUniqueAccountId(request.companyName);
       await setDoc(doc(db, "accounts", accountId), {
         name: request.companyName,
         tierId: "TIER_A", // Default tier, can be adjusted by admin
         currency: "USD", // Default currency, can be adjusted by admin
         territory: request.territory || null,
+        contactName: request.contactName || null,
+        contactEmail: request.email || null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -351,6 +379,27 @@ function ManageAccountsContent() {
       setCreateError(err?.message || "Failed to create account.");
     } finally {
       setCreateSubmitting(false);
+    }
+  }
+
+  async function handleResendLoginEmail(accountIdToResend: string) {
+    setResendEmailAccountId(accountIdToResend);
+    try {
+      const resend = httpsCallable<
+        { accountId: string; email?: string },
+        { emailSent: boolean }
+      >(functions, "resendDealerLoginEmail");
+      const res = await resend({ accountId: accountIdToResend });
+      const data = res.data as { emailSent: boolean };
+      alert(
+        data.emailSent
+          ? "Login email sent successfully."
+          : "Email could not be sent (check Mailgun/SMTP settings).",
+      );
+    } catch (err: any) {
+      alert(err?.message || "Failed to resend login email.");
+    } finally {
+      setResendEmailAccountId(null);
     }
   }
 
@@ -770,6 +819,25 @@ function ManageAccountsContent() {
                             Approve
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleResendLoginEmail(account.id)}
+                          disabled={
+                            resendEmailAccountId === account.id ||
+                            !(account as AccountWithUsers).contactEmail?.trim()
+                          }
+                          title={
+                            (account as AccountWithUsers).contactEmail?.trim()
+                              ? "Resend login details to contact email"
+                              : "Set contact email on account first"
+                          }
+                          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <EnvelopeIcon className="h-4 w-4" />
+                          {resendEmailAccountId === account.id
+                            ? "Sending…"
+                            : "Resend login email"}
+                        </button>
                         <Link
                           href={`/admin/accounts/${account.id}`}
                           className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10"

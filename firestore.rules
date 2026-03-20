@@ -19,10 +19,13 @@ service cloud.firestore {
       return request.auth.token.accountId;
     }
     
-    // Helper function to check if user owns the account
+    // Helper function to check if user owns the account (token claim or user doc)
     function ownsAccount(accountId) {
-      return isAuthenticated() && 
-             getUserAccountId() == accountId;
+      return isAuthenticated() && (
+        getUserAccountId() == accountId ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountId == accountId)
+      );
     }
     
     // Users collection: users can read their own profile
@@ -31,10 +34,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Accounts collection: users can read their own account
+    // Accounts collection: users can read their own account; dealers can update their own (e.g. currency preference)
     match /accounts/{accountId} {
       allow read: if isAuthenticated() && ownsAccount(accountId);
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && ownsAccount(accountId));
     }
     
     // Account requests: authenticated users can create and read their own request, only admins can update
@@ -81,9 +85,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Admin Settings: authenticated users can read branding (for logo display), only admins can write
+    // Admin Settings: anyone can read (branding for nav/landing), only admins can write
     match /adminSettings/{settingsId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
     

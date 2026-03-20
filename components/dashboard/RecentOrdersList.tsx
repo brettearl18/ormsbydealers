@@ -31,12 +31,9 @@ interface Props {
 export function RecentOrdersList({ orders, currency, isLoading, accountName }: Props) {
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {[...Array(3)].map((_, i) => (
-          <div
-            key={i}
-            className="h-16 animate-pulse rounded-lg bg-neutral-800"
-          />
+          <div key={i} className="h-12 animate-pulse rounded-xl bg-neutral-800/80" />
         ))}
       </div>
     );
@@ -44,11 +41,11 @@ export function RecentOrdersList({ orders, currency, isLoading, accountName }: P
 
   if (orders.length === 0) {
     return (
-      <div className="rounded-lg border border-neutral-800 p-6 text-center">
+      <div className="rounded-xl border border-white/10 bg-black/20 py-6 text-center">
         <p className="text-sm text-neutral-400">No orders yet</p>
         <Link
           href="/dealer"
-          className="mt-2 inline-block text-xs text-accent-soft hover:text-accent"
+          className="mt-2 inline-block text-xs font-medium text-accent-soft hover:text-accent hover:underline"
         >
           Browse guitars →
         </Link>
@@ -57,12 +54,12 @@ export function RecentOrdersList({ orders, currency, isLoading, accountName }: P
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       {orders.slice(0, 5).map((order) => (
         <Link
           key={order.id}
           href={`/orders/${order.id}`}
-          className="group block overflow-hidden rounded-2xl border border-white/10 glass p-4 transition-all duration-300 hover:border-accent/30 hover:scale-[1.02] hover:shadow-lg"
+          className="group block rounded-xl border border-white/10 bg-black/20 p-2.5 transition hover:border-accent/30 hover:bg-white/[0.04]"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
@@ -108,7 +105,7 @@ export function RecentOrdersList({ orders, currency, isLoading, accountName }: P
       {orders.length > 5 && (
         <Link
           href="/orders"
-          className="block rounded-2xl border border-white/10 glass p-4 text-center text-xs font-semibold text-neutral-400 transition-all duration-300 hover:border-accent/30 hover:text-accent-soft hover:scale-105"
+          className="block rounded-xl border border-white/10 py-2 text-center text-xs font-semibold text-neutral-400 transition hover:border-accent/30 hover:text-accent-soft"
         >
           View all orders ({orders.length}) →
         </Link>

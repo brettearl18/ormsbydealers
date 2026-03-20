@@ -2,13 +2,13 @@
 
 import { FormEvent, useState } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { useRouter } from "next/navigation";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { collection, query, where, getDocs } from "firebase/firestore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +17,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -48,31 +50,22 @@ export default function LoginPage() {
       
       // For non-admin users, check if they have been approved (has role and accountId)
       if (!role || !accountId) {
-        // Sign them out immediately
-        await signOut(auth);
-        
-        // Check if they have a pending account request
+        let message = "Your account isn't active yet. Please allow 24-48 hours for approval. If you've already registered, please wait for approval. Otherwise, please request access first.";
         try {
-          const requestsQuery = query(
-            collection(db, "accountRequests"),
-            where("uid", "==", userCredential.user.uid),
-            where("status", "==", "PENDING")
+          const checkStatus = httpsCallable<unknown, { hasPendingRequest: boolean }>(
+            functions,
+            "checkAccountRequestStatus"
           );
-          const requestsSnap = await getDocs(requestsQuery);
-          
-          if (!requestsSnap.empty) {
-            // User has a pending request
-            setError("Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.");
-          } else {
-            // No pending request found
-            setError("Your account isn't active yet. Please allow 24-48 hours for approval. If you've already registered, please wait for approval. Otherwise, please request access first.");
+          const res = await checkStatus({});
+          const data = res.data as { hasPendingRequest: boolean };
+          if (data.hasPendingRequest) {
+            message = "Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.";
           }
         } catch (queryError: any) {
           console.error("Error checking account request:", queryError);
-          // Default message if query fails
-          setError("Your account isn't active yet. Please allow 24-48 hours for approval. You'll receive an email once your account has been approved.");
         }
-        
+        await signOut(auth);
+        setError(message);
         setSubmitting(false);
         return;
       }
@@ -86,6 +79,34 @@ export default function LoginPage() {
         setError("Unable to sign in. Please try again.");
       }
       setSubmitting(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    const trimEmail = email.trim();
+    if (!trimEmail) {
+      setError("Enter your email above, then click Forgot password.");
+      return;
+    }
+    setError(null);
+    setResetSent(false);
+    setResetSending(true);
+    try {
+      const requestPasswordResetFn = httpsCallable<{ email: string }, { success: boolean }>(
+        functions,
+        "requestPasswordReset"
+      );
+      await requestPasswordResetFn({ email: trimEmail });
+      setResetSent(true);
+    } catch (err: any) {
+      const msg = err?.message || err?.code;
+      if (msg?.includes("invalid-argument") || msg === "invalid-argument") {
+        setError("Please enter a valid email address.");
+      } else {
+        setError("Could not send reset email. Please try again.");
+      }
+    } finally {
+      setResetSending(false);
     }
   }
 
@@ -133,9 +154,19 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-neutral-300">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-neutral-300">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetSending}
+                  className="text-xs font-medium text-accent hover:text-accent-soft disabled:opacity-50"
+                >
+                  {resetSending ? "Sending…" : "Forgot password?"}
+                </button>
+              </div>
               <div className="relative">
                 <LockClosedIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-500" />
                 <input
@@ -149,6 +180,15 @@ export default function LoginPage() {
                 />
               </div>
             </div>
+
+            {/* Reset sent success */}
+            {resetSent && (
+              <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+                <p className="text-xs text-green-400">
+                  Check your email for a link to reset your password. If you don’t see it, check spam.
+                </p>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

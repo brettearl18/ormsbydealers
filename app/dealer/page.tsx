@@ -4,11 +4,15 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { fetchDealerGuitars, type DealerGuitar } from "@/lib/dealer-guitars";
 import { FilterBar, type GuitarFilters } from "@/components/guitars/FilterBar";
 import { GuitarCard } from "@/components/guitars/GuitarCard";
 import { GuitarCardSkeleton } from "@/components/LoadingSkeleton";
 import { QuickViewModal } from "@/components/guitars/QuickViewModal";
+import type { FxRatesDoc } from "@/lib/types";
+import { fetchDealerFxRates } from "@/lib/fx-client";
 
 export default function DealerDashboard() {
   const { user, loading } = useAuth();
@@ -16,6 +20,10 @@ export default function DealerDashboard() {
   const [guitars, setGuitars] = useState<DealerGuitar[]>([]);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountResolved, setAccountResolved] = useState<{
+    tierId: string;
+    currency: string;
+  } | null>(null);
   const [filters, setFilters] = useState<GuitarFilters>({
     search: "",
     series: "",
@@ -25,49 +33,100 @@ export default function DealerDashboard() {
   );
   const [quickViewGuitar, setQuickViewGuitar] =
     useState<DealerGuitar | null>(null);
+  const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
+  /** Currency chosen by dealer for display (defaults to account currency) */
+  const [displayCurrency, setDisplayCurrency] = useState<string>("AUD");
 
-  // All hooks must be called before any conditional returns
+  // Load account doc so we have saved currency (and tier when claims missing)
   useEffect(() => {
-    if (!user?.accountId || !user?.tierId || !user?.currency) {
+    if (!user?.accountId) {
+      setAccountResolved(null);
       return;
     }
+    const accountId = user.accountId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "accounts", accountId));
+        if (!cancelled && snap.exists()) {
+          const d = snap.data() as { tierId?: string; currency?: string };
+          setAccountResolved({
+            tierId: d.tierId || user?.tierId || "TIER_A",
+            currency: d.currency || "AUD",
+          });
+        } else if (!cancelled) {
+          setAccountResolved({
+            tierId: user?.tierId || "TIER_A",
+            currency: user?.currency || "AUD",
+          });
+        }
+      } catch {
+        if (!cancelled)
+          setAccountResolved({
+            tierId: user?.tierId || "TIER_A",
+            currency: user?.currency || "AUD",
+          });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.accountId, user?.tierId, user?.currency]);
+
+  // Live FX (Frankfurter via /api/fx/latest), Firestore fallback
+  useEffect(() => {
+    let cancelled = false;
+    fetchDealerFxRates(db).then((data) => {
+      if (!cancelled && data) setFxRates(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Use defaults when pricing not set so dealers can access without tier/currency configured
+  const effectiveTierId = user?.tierId ?? accountResolved?.tierId ?? "TIER_A";
+  const effectiveCurrency = user?.currency ?? accountResolved?.currency ?? "AUD";
+
+  // Default display currency to saved account preference whenever it loads/updates
+  useEffect(() => {
+    setDisplayCurrency(effectiveCurrency);
+  }, [effectiveCurrency]);
+
+  useEffect(() => {
+    const accountId = user?.accountId;
+    if (!accountId) return;
     let cancelled = false;
     async function run() {
       setFetching(true);
       setError(null);
       try {
-        if (!user?.accountId) return;
         const data = await fetchDealerGuitars({
-          accountId: user.accountId,
-          tierId: user.tierId ?? undefined,
-          currency: user.currency ?? undefined,
+          accountId: accountId as string,
+          tierId: effectiveTierId,
+          currency: effectiveCurrency,
         });
-        if (!cancelled) {
-          setGuitars(data);
-        }
+        if (!cancelled) setGuitars(data);
       } catch (err) {
-        if (!cancelled) {
-          setError("Unable to load guitars right now.");
-        }
+        if (!cancelled) setError("Unable to load guitars right now.");
       } finally {
-        if (!cancelled) {
-          setFetching(false);
-        }
+        if (!cancelled) setFetching(false);
       }
     }
     run();
     return () => {
       cancelled = true;
     };
-  }, [user?.accountId]);
+  }, [user?.accountId, effectiveTierId, effectiveCurrency]);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading || user) return;
+    const t = setTimeout(() => {
       router.push("/login");
-    }
+    }, 200);
+    return () => clearTimeout(t);
   }, [loading, user, router]);
 
-  // Now we can do conditional returns
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -80,12 +139,12 @@ export default function DealerDashboard() {
     return null;
   }
 
-  if (!user.accountId || !user.tierId || !user.currency) {
+  if (!user.accountId) {
     return (
       <main className="flex flex-1 items-center justify-center">
         <p className="max-w-sm text-center text-sm text-neutral-400">
-          Your account is missing pricing configuration. Please contact Ormsby
-          to complete your dealer setup.
+          Your account isn’t fully set up yet. Please contact Ormsby to complete
+          your dealer setup.
         </p>
       </main>
     );
@@ -168,6 +227,20 @@ export default function DealerDashboard() {
                 <option value="price-high">Price: High to Low</option>
               </select>
             </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-neutral-500">Currency:</label>
+              <select
+                value={displayCurrency}
+                onChange={(e) => setDisplayCurrency(e.target.value)}
+                className="rounded-lg border border-neutral-800 bg-black/40 px-3 py-1.5 text-xs text-white outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="AUD">AUD</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="CAD">CAD</option>
+              </select>
+            </div>
           </div>
           <Link
             href="/cart"
@@ -201,38 +274,52 @@ export default function DealerDashboard() {
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((g) => (
-              <GuitarCard
-                key={g.id}
-                id={g.id}
-                sku={g.sku}
-                name={g.name}
-                series={g.series}
-                heroImage={g.heroImage}
-                availability={g.availability}
-                price={{
-                  value: g.price.value,
-                  currency: user.currency!,
-                  note:
-                    g.price.source === "PROMO"
-                      ? "Promo price"
-                      : g.price.source === "ACCOUNT_OVERRIDE"
-                      ? "Account-specific price"
-                      : g.price.source === "TIER"
-                      ? `Tier ${user.tierId} price`
-                      : null,
-                }}
-                onQuickView={() => setQuickViewGuitar(g)}
-              />
-            ))}
+            {filtered.map((g) => {
+              const rate =
+                displayCurrency !== "AUD" && fxRates?.rates[displayCurrency];
+              const displayValue =
+                g.price.value != null && rate
+                  ? g.price.value * rate
+                  : g.price.value;
+              const displayRrp =
+                g.rrp != null && rate ? g.rrp * rate : g.rrp ?? null;
+              return (
+                <GuitarCard
+                  key={g.id}
+                  id={g.id}
+                  sku={g.sku}
+                  name={g.name}
+                  series={g.series}
+                  heroImage={g.heroImage}
+                  availability={g.availability}
+                  price={{
+                    value: displayValue,
+                    currency: displayCurrency,
+                    note:
+                      g.price.source === "PROMO"
+                        ? "Promo price"
+                        : g.price.source === "ACCOUNT_OVERRIDE"
+                        ? "Account-specific price"
+                        : g.price.source === "TIER"
+                        ? `Tier ${effectiveTierId} price`
+                        : null,
+                  }}
+                  rrp={displayRrp}
+                  discountPercent={g.discountPercent}
+                  unitPriceAud={g.price.value}
+                  onQuickView={() => setQuickViewGuitar(g)}
+                />
+              );
+            })}
           </div>
         )}
       </section>
 
       <QuickViewModal
         guitar={quickViewGuitar}
-        currency={user.currency!}
-        tierId={user.tierId}
+        currency={displayCurrency}
+        tierId={effectiveTierId}
+        fxRates={fxRates}
         priceNote={
           quickViewGuitar
             ? quickViewGuitar.price.source === "PROMO"
@@ -240,7 +327,7 @@ export default function DealerDashboard() {
               : quickViewGuitar.price.source === "ACCOUNT_OVERRIDE"
               ? "Account-specific price"
               : quickViewGuitar.price.source === "TIER"
-              ? `Tier ${user.tierId} price`
+              ? `Tier ${effectiveTierId} price`
               : null
             : null
         }

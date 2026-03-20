@@ -48,6 +48,9 @@ export default function AdminSettingsPage() {
   const [refreshingFxRates, setRefreshingFxRates] = useState(false);
   const [fxRatesStatus, setFxRatesStatus] = useState<string | null>(null);
   const [termsTemplate, setTermsTemplate] = useState<string>("");
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailMessage, setTestEmailMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     async function loadSettings() {
@@ -378,6 +381,97 @@ export default function AdminSettingsPage() {
                 )}
               </div>
 
+              {/* Test email & email types list */}
+              <div className="glass-strong rounded-3xl p-6 shadow-xl">
+                <h2 className="text-lg font-semibold text-white">Test email</h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Send a test email to verify Mailgun/SMTP is working.
+                </p>
+
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-2">
+                    Emails you can trial
+                  </p>
+                  <ul className="space-y-2 text-sm text-neutral-300">
+                    <li>
+                      <span className="font-medium text-white">Test email</span>
+                      <span className="block text-xs text-neutral-400">
+                        Use the form below. Generic test to any address.
+                      </span>
+                    </li>
+                    <li>
+                      <span className="font-medium text-white">Welcome / login details</span>
+                      <span className="block text-xs text-neutral-400">
+                        Sent when you create a dealer account with a contact email (Admin → Accounts → Create account). Uses the Welcome subject/body templates.
+                      </span>
+                    </li>
+                    <li>
+                      <span className="font-medium text-white">Ad-hoc email</span>
+                      <span className="block text-xs text-neutral-400">
+                        Any custom email via the sendDealerEmail function (e.g. from scripts or future admin UI).
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-end gap-2">
+                  <div className="min-w-[200px]">
+                    <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                      Send test to
+                    </label>
+                    <input
+                      type="email"
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                      value={testEmailTo}
+                      onChange={(e) => {
+                        setTestEmailTo(e.target.value);
+                        setTestEmailMessage(null);
+                      }}
+                      placeholder="you@example.com"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!testEmailTo.trim() || testEmailSending}
+                    className="rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={async () => {
+                      const to = testEmailTo.trim();
+                      if (!to) return;
+                      setTestEmailSending(true);
+                      setTestEmailMessage(null);
+                      try {
+                        const sendDealerEmailFn = httpsCallable<
+                          { to: string; subject: string; text?: string; html?: string },
+                          { success: boolean }
+                        >(functions, "sendDealerEmail");
+                        await sendDealerEmailFn({
+                          to,
+                          subject: "Ormsby Dealer Portal – test email",
+                          text: "This is a test email. If you received this, the email system is working.",
+                        });
+                        setTestEmailMessage({ type: "success", text: `Test email sent to ${to}. Check the inbox (and spam).` });
+                      } catch (err: any) {
+                        setTestEmailMessage({
+                          type: "error",
+                          text: err?.message || "Failed to send test email.",
+                        });
+                      } finally {
+                        setTestEmailSending(false);
+                      }
+                    }}
+                  >
+                    {testEmailSending ? "Sending…" : "Send test email"}
+                  </button>
+                </div>
+                {testEmailMessage && (
+                  <p
+                    className={`mt-2 text-sm ${testEmailMessage.type === "success" ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {testEmailMessage.text}
+                  </p>
+                )}
+              </div>
+
               {/* SMTP (fallback when Mailgun not set) */}
               <div className="glass-strong rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center justify-between gap-2">
@@ -587,7 +681,7 @@ export default function AdminSettingsPage() {
               <div className="glass-strong rounded-3xl p-6 shadow-xl">
                 <h2 className="text-lg font-semibold text-white">Exchange Rates</h2>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Refresh currency exchange rates from OpenExchangeRates for dealer price estimates.
+                  Dealer catalog, cart, and product pages load live Frankfurter rates automatically. Use this to refresh the Firestore backup (used if the live feed fails). AUD → USD, EUR, GBP, CAD. No API key required.
                 </p>
                 <div className="mt-4">
                   <button
@@ -682,7 +776,60 @@ export default function AdminSettingsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                      Internal welcome notes
+                      Order confirmation body
+                    </label>
+                    <textarea
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                      value={emailTemplates?.orderConfirmationBody ?? ""}
+                      onChange={(e) =>
+                        setEmailTemplates((prev) => ({
+                          ...(prev ?? {}),
+                          orderConfirmationBody: e.target.value,
+                        }))
+                      }
+                      placeholder="Thank you for your order. Order ID: {{orderId}}. View: {{orderUrl}}. PO: {{poNumber}}"
+                      rows={3}
+                    />
+                    <p className="mt-1 text-xs text-neutral-500">Placeholders: {"{{orderId}}"}, {"{{orderUrl}}"}, {"{{poNumber}}"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                      Order status change subject
+                    </label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                      value={emailTemplates?.statusChangeSubject ?? ""}
+                      onChange={(e) =>
+                        setEmailTemplates((prev) => ({
+                          ...(prev ?? {}),
+                          statusChangeSubject: e.target.value,
+                        }))
+                      }
+                      placeholder="Your Ormsby order status has been updated"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                      Order status change body
+                    </label>
+                    <textarea
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
+                      value={emailTemplates?.statusChangeBody ?? ""}
+                      onChange={(e) =>
+                        setEmailTemplates((prev) => ({
+                          ...(prev ?? {}),
+                          statusChangeBody: e.target.value,
+                        }))
+                      }
+                      placeholder="Order {{orderId}} status is now: {{status}}. View: {{orderUrl}}"
+                      rows={3}
+                    />
+                    <p className="mt-1 text-xs text-neutral-500">Placeholders: {"{{orderId}}"}, {"{{status}}"}, {"{{orderUrl}}"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                      Welcome / login body
                     </label>
                     <textarea
                       className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"

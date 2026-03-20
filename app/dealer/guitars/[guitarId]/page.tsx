@@ -22,6 +22,8 @@ import Link from "next/link";
 import { ImageCarousel } from "@/components/guitars/ImageCarousel";
 import { SpecTable } from "@/components/guitars/SpecTable";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
+import { ModelsAndVariants } from "@/components/guitars/ModelsAndVariants";
+import { fetchDealerFxRates } from "@/lib/fx-client";
 
 export default function GuitarDetailPage({
   params,
@@ -69,13 +71,13 @@ export default function GuitarDetailPage({
       setFetching(true);
       setError(null);
       try {
-        const [guitarSnap, availabilitySnap, pricesSnap, accountSnap, fxSnap] =
+        const [guitarSnap, availabilitySnap, pricesSnap, accountSnap, fxLive] =
           await Promise.all([
             getDoc(doc(db, "guitars", guitarId)),
             getDoc(doc(db, "availability", guitarId)),
             getDoc(doc(db, "prices", guitarId)),
             user?.accountId ? getDoc(doc(db, "accounts", user.accountId)) : Promise.resolve(null),
-            getDoc(doc(db, "fxRates", "latest")),
+            fetchDealerFxRates(db),
           ]);
 
         if (!guitarSnap.exists()) {
@@ -92,7 +94,7 @@ export default function GuitarDetailPage({
           availabilitySnap.exists()
             ? (availabilitySnap.data() as AvailabilityDoc)
             : {
-                state: "IN_STOCK" as AvailabilityState,
+                state: "PREORDER" as AvailabilityState,
                 qtyAvailable: 0,
                 qtyAllocated: 0,
               },
@@ -105,8 +107,8 @@ export default function GuitarDetailPage({
           setAccount(null);
         }
 
-        if (fxSnap.exists()) {
-          setFxRates(fxSnap.data() as FxRatesDoc);
+        if (fxLive) {
+          setFxRates(fxLive);
         }
       } catch (err) {
         setError("Unable to load guitar details");
@@ -123,7 +125,12 @@ export default function GuitarDetailPage({
   type PriceSource = "BASE" | "PROMO" | "ACCOUNT_OVERRIDE" | "TIER" | null;
   const effectivePrice = useMemo((): { price: number | null; source: PriceSource } => {
     if (!prices || !guitar) return { price: null, source: null };
-    const rrp = getRRPForVariant(prices, guitar.options ?? null, selectedOptions);
+    const rrp = getRRPForVariant(
+      prices,
+      guitar.options ?? null,
+      selectedOptions,
+      account?.discountPercent ?? 0,
+    );
     if (rrp == null) return { price: null, source: null };
     const discountPercent = account?.discountPercent ?? 0;
     const price = getDealerPriceFromRRP(rrp, discountPercent);
@@ -173,24 +180,15 @@ export default function GuitarDetailPage({
     return effectivePrice.price * rate;
   }, [effectivePrice.price, fxRates, user?.currency]);
 
-  // Display RRP (base RRP + option RRP adjustments) for dealer reference
+  // Total RRP for selected variant (matches getRRPForVariant incl. legacy priceAdjustment → RRP)
   const displayRrp = useMemo(() => {
-    const baseRrp = prices?.rrp;
-    if (baseRrp == null) return null;
-    let rrp = baseRrp;
-    if (guitar?.options) {
-      for (const option of guitar.options) {
-        const selectedValueId = selectedOptions[option.optionId];
-        if (selectedValueId) {
-          const selectedValue = option.values.find((v) => v.valueId === selectedValueId);
-          if (selectedValue?.rrpAdjustment != null) {
-            rrp += selectedValue.rrpAdjustment;
-          }
-        }
-      }
-    }
-    return rrp;
-  }, [prices?.rrp, guitar?.options, selectedOptions]);
+    return getRRPForVariant(
+      prices ?? null,
+      guitar?.options ?? null,
+      selectedOptions,
+      account?.discountPercent ?? 0,
+    );
+  }, [prices, guitar?.options, selectedOptions, account?.discountPercent]);
 
   // Calculate converted price for selected display currency (dealer price already includes variant RRP + discount)
   const convertedPrice = useMemo(() => {
@@ -340,28 +338,30 @@ export default function GuitarDetailPage({
   };
 
   return (
-    <main className="flex flex-1 flex-col gap-8">
-      <Link
-        href="/dealer"
-        className="inline-flex items-center gap-2 text-sm text-neutral-400 transition hover:text-accent-soft"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to guitars
-      </Link>
+    <main className="flex flex-1 flex-col gap-10">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-2 text-sm">
+        <Link
+          href="/dealer"
+          className="text-neutral-400 transition hover:text-accent-soft"
+        >
+          Guitars
+        </Link>
+        <span className="text-neutral-600">/</span>
+        <span className="font-medium text-white">{guitar.name}</span>
+      </nav>
 
-      {/* Product Header placed near top for better mobile layout */}
-      <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+      {/* Hero: product name, series, SKU, availability */}
+      <header className="space-y-2">
+        <span className="inline-block rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent">
           {guitar.series}
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+        </span>
+        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
           {guitar.name}
         </h1>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           <p className="text-sm text-neutral-400">
-            SKU:{" "}
+            SKU{" "}
             <span className="font-mono font-medium text-white">
               {buildFinalSku()}
             </span>
@@ -371,34 +371,79 @@ export default function GuitarDetailPage({
             etaDate={availability!.etaDate}
             batchName={availability!.batchName}
           />
+          {guitar.run && (
+            <p className="text-xs text-neutral-500">{guitar.run}</p>
+          )}
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-12 lg:grid-cols-2">
-        {/* Image Carousel */}
-        <div className="space-y-6">
-          <ImageCarousel images={displayImages} name={guitar.name} />
-          
-          {/* Specifications */}
-          {guitar.specs && (
-            <SpecTable
-              specs={guitar.specs}
-            />
+      {/* Models & variants at a glance (strings, colours, etc.) */}
+      {guitar.options && guitar.options.length > 0 && (
+        <ModelsAndVariants options={guitar.options} />
+      )}
+
+      <div className="grid gap-10 lg:grid-cols-2">
+        {/* Left: Gallery + Full specs */}
+        <div className="space-y-8">
+          <section aria-labelledby="product-gallery-heading">
+            <h2 id="product-gallery-heading" className="sr-only">
+              Product images
+            </h2>
+            <ImageCarousel images={displayImages} name={guitar.name} />
+          </section>
+
+          {/* Full specifications (grouped) */}
+          {guitar.specs && Object.keys(guitar.specs).length > 0 && (
+            <section aria-label="Full specifications">
+              <SpecTable specs={guitar.specs} grouped />
+            </section>
           )}
         </div>
 
-        {/* Details */}
-        <div className="flex flex-col gap-6">
-          {/* Options Selector */}
-          <div className="space-y-6 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-soft">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
-              {guitar.options && guitar.options.length > 0
-                ? "Select Options"
-                : "Product Configuration"}
-            </h2>
-            
+        {/* Right: Configure & order — single card, clear flow */}
+        <div className="flex flex-col gap-4">
+          <section
+            className="rounded-2xl border border-white/10 bg-surface/80 p-5 shadow-soft"
+            aria-label="Configure and order"
+          >
+            {/* Price first so dealers see outcome immediately */}
+            <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+                  Your price
+                </p>
+                <p className="text-2xl font-bold text-accent sm:text-3xl">
+                  {effectivePrice.price != null
+                    ? new Intl.NumberFormat("en-AU", {
+                        style: "currency",
+                        currency: "AUD",
+                        minimumFractionDigits: 2,
+                      }).format(effectivePrice.price)
+                    : "—"}
+                </p>
+                {guitar.options && guitar.options.length > 0 && (
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {guitar.options
+                      .map((opt) => {
+                        const id = selectedOptions[opt.optionId];
+                        const val = opt.values.find((v) => v.valueId === id);
+                        return val?.label ?? null;
+                      })
+                      .filter(Boolean)
+                      .join(" · ") || "Select options"}
+                  </p>
+                )}
+              </div>
+              {displayRrp != null && (
+                <p className="text-sm text-neutral-400">
+                  RRP {new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(displayRrp)}
+                </p>
+              )}
+            </div>
+
+            {/* Options: colour then strings (compact) */}
             {guitar.options && guitar.options.length > 0 ? (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {guitar.options.map((option) => (
                   <OptionSelector
                     key={option.optionId}
@@ -412,56 +457,19 @@ export default function GuitarDetailPage({
               </div>
             ) : (
               <p className="text-sm text-neutral-400">
-                No additional options available for this product.
+                No options for this product.
               </p>
             )}
 
-            {/* Selected Options Summary */}
-            {guitar.options &&
-              guitar.options.length > 0 &&
-              Object.keys(selectedOptions).length > 0 && (
-                <div className="mt-6 space-y-3 rounded-xl border border-accent/30 bg-accent/10 p-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-accent">
-                    Selected Configuration
-                  </h3>
-                  <div className="space-y-2">
-                    {guitar.options.map((option) => {
-                      const selectedValueId = selectedOptions[option.optionId];
-                      if (!selectedValueId) return null;
-                      const selectedValue = option.values.find(
-                        (v) => v.valueId === selectedValueId,
-                      );
-                      if (!selectedValue) return null;
-                      return (
-                        <div
-                          key={option.optionId}
-                          className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2"
-                        >
-                          <span className="text-sm text-neutral-400">{option.label}:</span>
-                          <span className="text-sm font-semibold text-white">
-                            {selectedValue.label}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-          </div>
-
-          {/* Quantity & Pricing */}
-          <div className="space-y-6 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-soft">
-            {/* Quantity Selector */}
-            <div>
-              <label className="mb-3 block text-sm font-semibold text-white">
-                Quantity
-              </label>
-              <div className="flex items-center gap-4">
+            {/* Quantity: single compact row */}
+            <div className="mt-5 flex items-center justify-between gap-4 border-t border-white/10 pt-5">
+              <span className="text-sm font-medium text-white">Quantity</span>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                   disabled={quantity <= 1}
-                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-white/10 bg-white/5 text-xl font-medium text-white transition hover:border-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-lg font-medium text-white transition hover:border-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Decrease quantity"
                 >
                   −
@@ -472,16 +480,14 @@ export default function GuitarDetailPage({
                   value={quantity}
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val > 0) {
-                      setQuantity(val);
-                    }
+                    if (!isNaN(val) && val > 0) setQuantity(val);
                   }}
-                  className="flex-1 rounded-xl border-2 border-white/10 bg-white/5 px-4 py-3 text-center text-lg font-semibold text-white focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  className="w-14 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-white focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 />
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => q + 1)}
-                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-white/10 bg-white/5 text-xl font-medium text-white transition hover:border-accent hover:bg-accent/20"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-lg font-medium text-white transition hover:border-accent hover:bg-accent/20"
                   aria-label="Increase quantity"
                 >
                   +
@@ -489,18 +495,15 @@ export default function GuitarDetailPage({
               </div>
             </div>
 
-            {/* Pricing Breakdown */}
-            <div className="space-y-3 border-t border-white/10 pt-6">
-              {/* Currency Selector */}
-              <div className="mb-4 space-y-2">
-                <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                  View Price in Currency
-                </label>
+            {/* Currency + breakdown */}
+            <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-neutral-500">Show in</label>
                 <select
                   value={selectedDisplayCurrency || user?.currency || "USD"}
                   onChange={(e) => setSelectedDisplayCurrency(e.target.value)}
                   disabled={!fxRates}
-                  className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-sm text-white outline-none focus:border-accent disabled:opacity-50"
                 >
                   {fxRates ? (
                     ALLOWED_CURRENCIES.filter((currency) => {
@@ -521,7 +524,13 @@ export default function GuitarDetailPage({
                 </select>
                 {fxRates?.asOf ? (
                   <p className="text-xs text-neutral-500">
-                    Exchange rates as of {new Date(fxRates.asOf).toLocaleDateString()}
+                    Exchange rates as of{" "}
+                    {(() => {
+                      const d = new Date(fxRates.asOf);
+                      const today = new Date();
+                      const show = d > today ? today : d;
+                      return show.toLocaleDateString();
+                    })()}
                   </p>
                 ) : (
                   <p className="text-xs text-neutral-500">
@@ -530,41 +539,17 @@ export default function GuitarDetailPage({
                 )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Dealer Price (AUD)</span>
-                <PriceTag
-                  price={effectivePrice.price}
-                  currency="AUD"
-                  note={
-                    effectivePrice.source === "PROMO"
-                      ? "Promo price"
-                      : effectivePrice.source === "ACCOUNT_OVERRIDE"
-                      ? "Account-specific price"
-                      : effectivePrice.source === "TIER"
-                      ? `Tier ${user.tierId} price`
-                      : null
-                  }
-                />
-              </div>
-
-              {displayRrp != null && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-400">RRP (AUD)</span>
-                  <PriceTag price={displayRrp} currency="AUD" note="Recommended retail" />
-                </div>
-              )}
-              
               {/* Option price adjustments */}
               {guitar.options &&
                 guitar.options.some((option) => {
                   const selectedValueId = selectedOptions[option.optionId];
-                  if (selectedValueId) {
-                    const selectedValue = option.values.find(
-                      (v) => v.valueId === selectedValueId,
-                    );
-                    return selectedValue?.priceAdjustment != null;
-                  }
-                  return false;
+                  if (!selectedValueId) return false;
+                  const selectedValue = option.values.find(
+                    (v) => v.valueId === selectedValueId,
+                  );
+                  const r = selectedValue?.rrpAdjustment;
+                  const p = selectedValue?.priceAdjustment;
+                  return (r != null && r !== 0) || (p != null && p !== 0);
                 }) && (
                   <div className="space-y-2 border-t border-white/10 pt-3">
                     {guitar.options.map((option) => {
@@ -573,7 +558,18 @@ export default function GuitarDetailPage({
                       const selectedValue = option.values.find(
                         (v) => v.valueId === selectedValueId,
                       );
-                      if (!selectedValue?.priceAdjustment) return null;
+                      if (!selectedValue) return null;
+                      const rrpAdj = selectedValue.rrpAdjustment;
+                      const priceAdj = selectedValue.priceAdjustment;
+                      if (
+                        (rrpAdj == null || rrpAdj === 0) &&
+                        (priceAdj == null || priceAdj === 0)
+                      ) {
+                        return null;
+                      }
+                      const useRrp = rrpAdj != null && rrpAdj !== 0;
+                      const amount = useRrp ? rrpAdj! : priceAdj!;
+                      const suffix = useRrp ? "RRP" : "dealer add-on";
                       return (
                         <div
                           key={option.optionId}
@@ -581,19 +577,22 @@ export default function GuitarDetailPage({
                         >
                           <span className="text-neutral-400">
                             {option.label}: {selectedValue.label}
+                            <span className="ml-1 text-[10px] text-neutral-500">
+                              ({suffix})
+                            </span>
                           </span>
                           <span
                             className={
-                              selectedValue.priceAdjustment > 0
+                              amount > 0
                                 ? "font-medium text-green-400"
                                 : "font-medium text-red-400"
                             }
                           >
-                            {selectedValue.priceAdjustment > 0 ? "+" : ""}
+                            {amount > 0 ? "+" : ""}
                             {new Intl.NumberFormat("en-AU", {
                               style: "currency",
                               currency: "AUD",
-                            }).format(selectedValue.priceAdjustment)}
+                            }).format(amount)}
                           </span>
                         </div>
                       );
@@ -714,8 +713,7 @@ export default function GuitarDetailPage({
                 </div>
               )}
             </div>
-          </div>
-
+          </section>
 
           {/* Add to Cart Button */}
           <div className="space-y-3">

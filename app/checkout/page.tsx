@@ -94,7 +94,12 @@ export default function CheckoutPage() {
     return items.map((item) => {
       const prices = pricesMap.get(item.guitarId);
       const guitar = guitarsMap.get(item.guitarId);
-      const rrp = getRRPForVariant(prices ?? null, guitar?.options ?? null, item.selectedOptions ?? null);
+      const rrp = getRRPForVariant(
+        prices ?? null,
+        guitar?.options ?? null,
+        item.selectedOptions ?? null,
+        discountPercent,
+      );
       const unitPrice = rrp != null ? getDealerPriceFromRRP(rrp, discountPercent) : item.unitPrice;
       return { ...item, unitPrice };
     });
@@ -156,7 +161,7 @@ export default function CheckoutPage() {
   if (authLoading || loadingAccount) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-neutral-400">Loading checkout…</p>
+        <p className="text-sm text-neutral-400">Loading…</p>
       </main>
     );
   }
@@ -290,7 +295,7 @@ export default function CheckoutPage() {
     <main className="flex flex-1 flex-col gap-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Checkout</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Place order</h1>
           <p className="mt-2 text-sm text-neutral-400">
             Review your order and enter shipping details
           </p>

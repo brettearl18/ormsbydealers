@@ -6,6 +6,24 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+/** Base URL for dealer portal (used in email links). */
+const PORTAL_BASE_URL = "https://ormsbydealers.vercel.app";
+
+/** Get dealer email for an order: prefer user doc, else account contactEmail. */
+async function getDealerEmailForOrder(accountId: string, createdByUid: string): Promise<string | null> {
+  const userSnap = await db.collection("users").doc(createdByUid).get();
+  if (userSnap.exists) {
+    const email = (userSnap.data() as { email?: string }).email;
+    if (email) return email;
+  }
+  const accountSnap = await db.collection("accounts").doc(accountId).get();
+  if (accountSnap.exists) {
+    const email = (accountSnap.data() as { contactEmail?: string }).contactEmail;
+    if (email) return email;
+  }
+  return null;
+}
+
 interface AdminSmtpSettings {
   host: string;
   port: number;
@@ -49,15 +67,18 @@ async function sendEmailViaMailgun(params: {
   subject: string;
   text?: string;
   html?: string;
+  /** Set false so login/reset links are not rewritten (avoids tracking domain SSL issues). */
+  trackingClicks?: boolean;
 }): Promise<void> {
   const { apiKey, domain } = getMailgunConfig()!;
-  const { from, to, subject, text, html } = params;
+  const { from, to, subject, text, html, trackingClicks = true } = params;
   const body = new URLSearchParams();
   body.set("from", from);
   body.set("to", to);
   body.set("subject", subject);
   if (text) body.set("text", text);
   if (html) body.set("html", html);
+  if (trackingClicks === false) body.set("o:tracking-clicks", "no");
 
   const auth = Buffer.from(`api:${apiKey}`).toString("base64");
   const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
@@ -102,6 +123,8 @@ async function sendEmail(params: {
   text?: string;
   html?: string;
   from?: string;
+  /** Set false for emails with login/reset links so they are not rewritten by Mailgun. */
+  trackingClicks?: boolean;
 }): Promise<void> {
   const from = params.from || (await getFromEmail());
   const mailgun = getMailgunConfig();
@@ -112,6 +135,7 @@ async function sendEmail(params: {
       subject: params.subject,
       text: params.text,
       html: params.html,
+      trackingClicks: params.trackingClicks,
     });
     return;
   }
@@ -254,6 +278,36 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
 
     await batch.commit();
 
+    // Order confirmation email (if enabled)
+    const orderId = orderRef.id;
+    (async () => {
+      try {
+        const settingsSnap = await db.collection("adminSettings").doc("global").get();
+        if (!settingsSnap.exists) return;
+        const settings = settingsSnap.data() as {
+          notifications?: { orderCreatedEmail?: boolean };
+          emailTemplates?: { orderConfirmationSubject?: string; orderConfirmationBody?: string };
+        };
+        if (!settings.notifications?.orderCreatedEmail) return;
+        const dealerEmail = await getDealerEmailForOrder(accountId, uid);
+        if (!dealerEmail) return;
+        const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
+        const subject =
+          settings.emailTemplates?.orderConfirmationSubject ||
+          "We've received your Ormsby order";
+        let body =
+          settings.emailTemplates?.orderConfirmationBody ||
+          "Thank you for your order.\n\nOrder ID: {{orderId}}\nView order: {{orderUrl}}\n\nWe'll notify you when the status changes.";
+        body = body
+          .replace(/\{\{orderId\}\}/g, orderId)
+          .replace(/\{\{orderUrl\}\}/g, orderUrl)
+          .replace(/\{\{poNumber\}\}/g, poNumber || "");
+        await sendEmail({ to: dealerEmail, subject, text: body });
+      } catch (err) {
+        console.error("Order confirmation email failed:", err);
+      }
+    })();
+
     return {
       orderId: orderRef.id,
       status: "SUBMITTED",
@@ -317,6 +371,75 @@ export const sendDealerEmail = functions.https.onCall(
         error.message || "Failed to send email.",
       );
     }
+  },
+);
+
+/**
+ * Password reset via Mailgun (no auth required).
+ * Generates a Firebase reset link and sends it from your domain for better deliverability.
+ */
+export const requestPasswordReset = functions.https.onCall(
+  async (data: { email: string }, context: functions.https.CallableContext) => {
+    const email = typeof data?.email === "string" ? data.email.trim() : "";
+    if (!email) {
+      throw new functions.https.HttpsError("invalid-argument", "Email is required.");
+    }
+    try {
+      const auth = admin.auth();
+      let link: string;
+      try {
+        link = await auth.generatePasswordResetLink(email, {
+          url: `${PORTAL_BASE_URL}/login`,
+        });
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
+          return { success: true };
+        }
+        throw err;
+      }
+      const settingsSnap = await db.collection("adminSettings").doc("global").get();
+      const settings = settingsSnap.exists
+        ? (settingsSnap.data() as {
+            emailTemplates?: { passwordResetSubject?: string; passwordResetBody?: string };
+          })
+        : null;
+      const subject =
+        settings?.emailTemplates?.passwordResetSubject ||
+        "Reset your Ormsby Dealer Portal password";
+      let body =
+        settings?.emailTemplates?.passwordResetBody ||
+        "You requested a password reset.\n\nClick the link below to set a new password:\n{{resetLink}}\n\nIf you didn't request this, you can ignore this email. The link expires in 1 hour.";
+      body = body.replace(/\{\{resetLink\}\}/g, link);
+      await sendEmail({ to: email, subject, text: body, trackingClicks: false });
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error in requestPasswordReset:", error);
+      if (error instanceof functions.https.HttpsError) throw error;
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to send reset email. Please try again.",
+      );
+    }
+  },
+);
+
+/**
+ * Check if the current user has a pending account request (for login flow).
+ * Requires auth; avoids client needing Firestore read on accountRequests.
+ */
+export const checkAccountRequestStatus = functions.https.onCall(
+  async (_data: unknown, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    const uid = context.auth.uid;
+    const snap = await db
+      .collection("accountRequests")
+      .where("uid", "==", uid)
+      .where("status", "==", "PENDING")
+      .limit(1)
+      .get();
+    return { hasPendingRequest: !snap.empty };
   },
 );
 
@@ -437,11 +560,12 @@ export const createDealerAuthUser = functions.https.onCall(
             body = body
               .replace(/\{\{email\}\}/g, email)
               .replace(/\{\{password\}\}/g, tempPassword)
-              .replace(/\{\{loginUrl\}\}/g, "https://ormsbydistribute.web.app/login");
+              .replace(/\{\{loginUrl\}\}/g, `${PORTAL_BASE_URL}/login`);
             await sendEmail({
               to: email,
               subject: welcomeSubject,
               text: body,
+              trackingClicks: false,
             });
             emailSent = true;
           }
@@ -462,6 +586,137 @@ export const createDealerAuthUser = functions.https.onCall(
   },
 );
 
+/** Request body for resendDealerLoginEmail */
+interface ResendDealerLoginEmailRequest {
+  accountId: string;
+  /** If omitted, uses account.contactEmail */
+  email?: string;
+}
+
+/**
+ * Resends the dealer login/welcome email (new temp password + same template).
+ * Admin only. Use when the first email didn't come through.
+ */
+export const resendDealerLoginEmail = functions.https.onCall(
+  async (data: ResendDealerLoginEmailRequest, context: functions.https.CallableContext) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated.",
+        );
+      }
+      const role = context.auth.token.role as string | undefined;
+      if (role !== "ADMIN") {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only admin users can resend login emails.",
+        );
+      }
+
+      const accountId = typeof data?.accountId === "string" ? data.accountId.trim() : "";
+      if (!accountId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "accountId is required.",
+        );
+      }
+
+      const accountSnap = await db.collection("accounts").doc(accountId).get();
+      if (!accountSnap.exists) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Account not found.",
+        );
+      }
+      const accountData = accountSnap.data() as {
+        name?: string;
+        contactEmail?: string;
+        tierId?: string;
+        currency?: string;
+      };
+      const companyName = accountData.name?.trim() || accountId;
+      const email =
+        (typeof data?.email === "string" ? data.email.trim() : null) ||
+        accountData.contactEmail?.trim() ||
+        null;
+      if (!email) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "No email to send to. Set contact email on the account or pass email.",
+        );
+      }
+
+      const auth = admin.auth();
+      let user: admin.auth.UserRecord;
+      try {
+        user = await auth.getUserByEmail(email);
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found") {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "No Firebase user found with that email. Create the user first (e.g. via Create Account with email).",
+          );
+        }
+        throw err;
+      }
+
+      const tempPassword = companyName + "123!@#";
+      await auth.updateUser(user.uid, { password: tempPassword });
+
+      let emailSent = false;
+      try {
+        const mailgun = getMailgunConfig();
+        const smtp = mailgun ? null : await getSmtpSettings().catch(() => null);
+        const smtpPassword = functions.config().smtp?.password as string | undefined;
+        const canSend = mailgun || (smtp && (smtpPassword || !smtp?.username));
+        if (canSend) {
+          const settingsSnap = await db.collection("adminSettings").doc("global").get();
+          const settingsData = (settingsSnap.exists ? settingsSnap.data() : null) as {
+            emailTemplates?: { welcomeSubject?: string; welcomeBody?: string };
+          } | null;
+          const welcomeSubject =
+            settingsData?.emailTemplates?.welcomeSubject ||
+            "Your Ormsby Dealer Portal login";
+          let body =
+            settingsData?.emailTemplates?.welcomeBody ||
+            "Your dealer portal account is ready.\n\nLogin URL: {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{password}}\n\nPlease change your password after first login if the portal allows it.";
+          body = body
+            .replace(/\{\{email\}\}/g, email)
+            .replace(/\{\{password\}\}/g, tempPassword)
+            .replace(/\{\{loginUrl\}\}/g, `${PORTAL_BASE_URL}/login`);
+          await sendEmail({
+            to: email,
+            subject: welcomeSubject,
+            text: body,
+            trackingClicks: false,
+          });
+          emailSent = true;
+        }
+      } catch (emailErr: any) {
+        console.error("Failed to resend login email:", emailErr);
+      }
+
+      return { emailSent };
+    } catch (error: any) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      console.error("Error in resendDealerLoginEmail:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to resend login email.",
+      );
+    }
+  },
+);
+
+/**
+ * Refresh FX rates from Frankfurter API (free, no API key).
+ * Base: AUD. Targets: USD, EUR, GBP, CAD for EU, USA, GBP, CAD dealers.
+ * @see https://frankfurter.dev/
+ */
+const FRANKFURTER_BASE = "AUD";
+const FRANKFURTER_SYMBOLS = "USD,EUR,GBP,CAD";
+
 export const refreshFxRates = functions.https.onCall(
   async (_data: unknown, context: functions.https.CallableContext) => {
     try {
@@ -480,36 +735,35 @@ export const refreshFxRates = functions.https.onCall(
         );
       }
 
-      const appId = functions.config().oer?.app_id as string | undefined;
-      if (!appId) {
-        throw new functions.https.HttpsError(
-          "failed-precondition",
-          "OpenExchangeRates app_id is not configured. Set functions config oer.app_id.",
-        );
-      }
-
-      // Fetch FX rates with AUD as base currency
-      const response = await fetch(
-        `https://openexchangerates.org/api/latest.json?app_id=${appId}&base=AUD`,
-      );
+      const url = `https://api.frankfurter.dev/v1/latest?base=${FRANKFURTER_BASE}&symbols=${FRANKFURTER_SYMBOLS}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
-        console.error("OpenExchangeRates error:", response.status, response.statusText);
+        console.error("Frankfurter API error:", response.status, response.statusText);
         throw new functions.https.HttpsError(
           "internal",
-          "Failed to fetch FX rates from OpenExchangeRates.",
+          "Failed to fetch FX rates from Frankfurter.",
         );
       }
 
       const json = (await response.json()) as {
         base: string;
+        date: string;
         rates: Record<string, number>;
-        timestamp: number;
       };
 
+      const now = new Date();
+      let asOf: string;
+      if (json.date) {
+        const apiDate = new Date(json.date + "T12:00:00.000Z");
+        // Never store a future date — use now if API date is ahead (avoids confusion)
+        asOf = apiDate > now ? now.toISOString() : apiDate.toISOString();
+      } else {
+        asOf = now.toISOString();
+      }
       const fxDoc: FxRatesDoc = {
         base: json.base,
-        asOf: new Date(json.timestamp * 1000).toISOString(),
+        asOf,
         rates: json.rates,
       };
 
@@ -529,5 +783,48 @@ export const refreshFxRates = functions.https.onCall(
   },
 );
 
+/** Send email to dealer when order status is updated (if notification enabled). */
+export const onOrderUpdated = functions.firestore
+  .document("orders/{orderId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() as { status?: string };
+    const after = change.after.data() as { status?: string; accountId?: string; createdByUid?: string };
+    if (before.status === after.status) return;
+
+    try {
+      const settingsSnap = await db.collection("adminSettings").doc("global").get();
+      if (!settingsSnap.exists) return;
+      const settings = settingsSnap.data() as {
+        notifications?: { orderStatusChangedEmail?: boolean };
+        emailTemplates?: { statusChangeSubject?: string; statusChangeBody?: string };
+      };
+      if (!settings.notifications?.orderStatusChangedEmail) return;
+
+      const orderId = context.params.orderId as string;
+      const accountId = after.accountId;
+      const createdByUid = after.createdByUid;
+      if (!accountId || !createdByUid) return;
+
+      const dealerEmail = await getDealerEmailForOrder(accountId, createdByUid);
+      if (!dealerEmail) return;
+
+      const newStatus = after.status || "Unknown";
+      const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
+      const subject =
+        settings.emailTemplates?.statusChangeSubject ||
+        "Your Ormsby order status has been updated";
+      let body =
+        settings.emailTemplates?.statusChangeBody ||
+        "Order {{orderId}} status is now: {{status}}\n\nView order: {{orderUrl}}";
+      body = body
+        .replace(/\{\{orderId\}\}/g, orderId)
+        .replace(/\{\{status\}\}/g, newStatus)
+        .replace(/\{\{orderUrl\}\}/g, orderUrl);
+
+      await sendEmail({ to: dealerEmail, subject, text: body });
+    } catch (err) {
+      console.error("Order status change email failed:", err);
+    }
+  });
 
 
