@@ -7,7 +7,12 @@ import {
   ShoppingCartIcon,
 } from "@heroicons/react/24/outline";
 
-export function QuickActionsCard() {
+export function QuickActionsCard({
+  hideCartAndCheckout = false,
+}: {
+  /** Admin dealer preview: cart/checkout are disabled */
+  hideCartAndCheckout?: boolean;
+}) {
   const actions = [
     {
       label: "Browse Guitars",
@@ -15,12 +20,16 @@ export function QuickActionsCard() {
       icon: ShoppingBagIcon,
       primary: true,
     },
-    {
-      label: "Cart & Checkout",
-      href: "/cart",
-      icon: ShoppingCartIcon,
-      primary: false,
-    },
+    ...(!hideCartAndCheckout
+      ? [
+          {
+            label: "Cart & Checkout",
+            href: "/cart",
+            icon: ShoppingCartIcon,
+            primary: false,
+          } as const,
+        ]
+      : []),
     {
       label: "View Orders",
       href: "/orders",
@@ -77,14 +86,18 @@ export function QuickActionsCard() {
         <Link href="/dealer" className="text-accent-soft hover:underline">
           Browse
         </Link>
-        {" → "}
-        <Link href="/cart" className="text-accent-soft hover:underline">
-          Cart
-        </Link>
-        {" → "}
-        <Link href="/checkout" className="text-accent-soft hover:underline">
-          Place order
-        </Link>
+        {!hideCartAndCheckout && (
+          <>
+            {" → "}
+            <Link href="/cart" className="text-accent-soft hover:underline">
+              Cart
+            </Link>
+            {" → "}
+            <Link href="/checkout" className="text-accent-soft hover:underline">
+              Place order
+            </Link>
+          </>
+        )}
       </p>
     </div>
   );

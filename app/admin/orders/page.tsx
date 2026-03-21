@@ -619,10 +619,26 @@ export default function AdminOrdersPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <div className="mb-3 flex items-center gap-3">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-bold text-white group-hover:text-accent transition-colors">
                         Order #{order.id.slice(0, 8).toUpperCase()}
                       </h3>
+                      {order.pendingOrmsbyRevisionReview && (
+                        <span
+                          className="rounded-full bg-amber-500/25 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-200 ring-1 ring-amber-500/40"
+                          title="Dealer submitted updates — awaiting Ormsby review"
+                        >
+                          Revision pending
+                        </span>
+                      )}
+                      {order.dealerPendingAdminProposedChanges && (
+                        <span
+                          className="rounded-full bg-violet-500/25 px-3 py-1 text-xs font-bold uppercase tracking-wide text-violet-200 ring-1 ring-violet-500/40"
+                          title="Ormsby proposed changes — awaiting dealer confirmation"
+                        >
+                          Awaiting dealer
+                        </span>
+                      )}
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-medium ${
                           STATUS_COLORS[order.status]

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
 import { useEffect, useState } from "react";
 import { collection, query, where, orderBy, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -30,6 +31,8 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useAuth();
+  const effectiveAccountId = useEffectiveAccountId();
+  const { isAdminDealerPreview, dealerView } = useDealerView();
   const router = useRouter();
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
   const [fetching, setFetching] = useState(true);
@@ -40,7 +43,7 @@ export default function OrdersPage() {
       router.push("/login");
       return;
     }
-    if (!user?.accountId) {
+    if (!effectiveAccountId) {
       setFetching(false);
       return;
     }
@@ -49,11 +52,11 @@ export default function OrdersPage() {
       setFetching(true);
       setError(null);
       try {
-        if (!user?.accountId) return;
+        if (!effectiveAccountId) return;
         const ordersRef = collection(db, "orders");
         const q = query(
           ordersRef,
-          where("accountId", "==", user.accountId),
+          where("accountId", "==", effectiveAccountId),
           orderBy("createdAt", "desc"),
         );
         const snap = await getDocs(q);
@@ -81,7 +84,7 @@ export default function OrdersPage() {
     }
 
     fetchOrders();
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, effectiveAccountId]);
 
   if (authLoading || fetching) {
     return (
@@ -95,13 +98,48 @@ export default function OrdersPage() {
     return null;
   }
 
+  if (user.role === "ADMIN" && !isAdminDealerPreview) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-semibold text-white">Dealer order view</h1>
+          <p className="mt-2 text-sm text-neutral-400">
+            Open an account in Admin → Accounts and choose <strong className="text-neutral-300">View as dealer</strong>{" "}
+            to see the same order list that dealer sees.
+          </p>
+          <Link
+            href="/admin/accounts"
+            className="mt-6 inline-flex rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft"
+          >
+            Go to accounts
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (!effectiveAccountId) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+        <p className="text-sm text-neutral-400">No account selected.</p>
+        <Link href="/dashboard" className="text-sm text-accent hover:underline">
+          Back to dashboard
+        </Link>
+      </main>
+    );
+  }
+
   return (
     <main className="flex flex-1 flex-col gap-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Your orders</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            {isAdminDealerPreview && dealerView ? `${dealerView.accountName} — orders` : "Your orders"}
+          </h1>
           <p className="mt-2 text-sm text-neutral-400">
-            View and track your purchase orders
+            {isAdminDealerPreview
+              ? "Dealer-facing order list (read-only preview)."
+              : "View and track your purchase orders"}
           </p>
         </div>
         {orders.length > 0 && (
@@ -156,10 +194,15 @@ export default function OrdersPage() {
                 <div className="flex flex-1 items-center gap-6">
                   {/* Order Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="mb-2 flex items-center gap-3">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-bold text-white group-hover:text-accent transition-colors">
                         Order #{order.id.slice(0, 8).toUpperCase()}
                       </h3>
+                      {order.pendingOrmsbyRevisionReview && (
+                        <span className="inline-flex items-center rounded-full bg-amber-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white shadow-sm">
+                          Pending approval
+                        </span>
+                      )}
                       <span
                         className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide text-white shadow-sm ${
                           STATUS_COLORS[order.status]

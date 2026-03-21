@@ -24,6 +24,14 @@ async function getDealerEmailForOrder(accountId: string, createdByUid: string): 
   return null;
 }
 
+async function getSupportEmailFromSettings(): Promise<string | null> {
+  const snap = await db.collection("adminSettings").doc("global").get();
+  if (!snap.exists) return null;
+  const branding = (snap.data() as { branding?: { supportEmail?: string } }).branding;
+  const e = branding?.supportEmail?.trim();
+  return e || null;
+}
+
 interface AdminSmtpSettings {
   host: string;
   port: number;
@@ -443,6 +451,26 @@ export const checkAccountRequestStatus = functions.https.onCall(
   },
 );
 
+/**
+ * Clears mustChangePassword custom claim after the user updates password.
+ * Requires auth.
+ */
+export const clearMustChangePassword = functions.https.onCall(
+  async (_data: unknown, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    const uid = context.auth.uid;
+    const user = await admin.auth().getUser(uid);
+    const claims = user.customClaims || {};
+    await admin.auth().setCustomUserClaims(uid, {
+      ...claims,
+      mustChangePassword: false,
+    });
+    return { success: true };
+  },
+);
+
 /** Request body for createDealerAuthUser */
 interface CreateDealerAuthUserRequest {
   accountId: string;
@@ -524,6 +552,7 @@ export const createDealerAuthUser = functions.https.onCall(
         accountId,
         tierId,
         currency,
+        mustChangePassword: true,
       };
       await auth.setCustomUserClaims(user.uid, claims);
 
@@ -663,6 +692,11 @@ export const resendDealerLoginEmail = functions.https.onCall(
 
       const tempPassword = companyName + "123!@#";
       await auth.updateUser(user.uid, { password: tempPassword });
+      const existingClaims = user.customClaims || {};
+      await auth.setCustomUserClaims(user.uid, {
+        ...existingClaims,
+        mustChangePassword: true,
+      });
 
       let emailSent = false;
       try {
@@ -824,6 +858,92 @@ export const onOrderUpdated = functions.firestore
       await sendEmail({ to: dealerEmail, subject, text: body });
     } catch (err) {
       console.error("Order status change email failed:", err);
+    }
+  });
+
+/** Emails for dealer revision submit / admin proposed changes / dealer response (independent of status). */
+export const onOrderRevisionWorkflowEmail = functions.firestore
+  .document("orders/{orderId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() as Record<string, unknown>;
+    const after = change.after.data() as Record<string, unknown>;
+    const orderId = context.params.orderId as string;
+    const accountId = after.accountId as string | undefined;
+    const createdByUid = after.createdByUid as string | undefined;
+    const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
+    const adminOrderUrl = `${PORTAL_BASE_URL}/admin/orders/${orderId}`;
+
+    try {
+      const settingsSnap = await db.collection("adminSettings").doc("global").get();
+      const notifications = settingsSnap.exists
+        ? (settingsSnap.data() as {
+            notifications?: {
+              orderDealerRevisionSubmittedEmail?: boolean;
+              orderAdminProposedChangesEmail?: boolean;
+              orderDealerProposalResponseEmail?: boolean;
+            };
+          }).notifications
+        : {};
+
+      const staffEmail = await getSupportEmailFromSettings();
+
+      // Dealer submitted updated order for Ormsby review (skip if same update is "reject admin proposal")
+      if (after.pendingOrmsbyRevisionReview && !before.pendingOrmsbyRevisionReview) {
+        const isRejectAdminProposal =
+          Boolean(after.dealerRejectedAdminProposedAt) &&
+          after.dealerRejectedAdminProposedAt !== before.dealerRejectedAdminProposedAt;
+        if (
+          !isRejectAdminProposal &&
+          notifications?.orderDealerRevisionSubmittedEmail !== false &&
+          staffEmail
+        ) {
+          await sendEmail({
+            to: staffEmail,
+            subject: `[Ormsby] Dealer submitted order updates — ${orderId.slice(0, 8)}`,
+            text: `A dealer submitted changes on order ${orderId} for review.\n\nReview in admin: ${adminOrderUrl}`,
+          });
+        }
+      }
+
+      // Ormsby sent proposed line/pricing changes to dealer
+      if (after.dealerPendingAdminProposedChanges && !before.dealerPendingAdminProposedChanges) {
+        if (notifications?.orderAdminProposedChangesEmail !== false && accountId && createdByUid) {
+          const dealerEmail = await getDealerEmailForOrder(accountId, createdByUid);
+          if (dealerEmail) {
+            const note = (after.adminProposedChangesNote as string | undefined)?.trim();
+            await sendEmail({
+              to: dealerEmail,
+              subject: `[Ormsby] Please confirm updated order — ${orderId.slice(0, 8)}`,
+              text: `Ormsby has updated your order ${orderId}. Please open the portal to review and accept or request changes.\n\n${orderUrl}${note ? `\n\nNote from Ormsby:\n${note}` : ""}`,
+            });
+          }
+        }
+      }
+
+      // Dealer accepted admin proposal
+      if (after.dealerAcceptedAdminChangesAt && !before.dealerAcceptedAdminChangesAt) {
+        if (notifications?.orderDealerProposalResponseEmail !== false && staffEmail) {
+          await sendEmail({
+            to: staffEmail,
+            subject: `[Ormsby] Dealer accepted proposed order changes — ${orderId.slice(0, 8)}`,
+            text: `The dealer accepted the proposed changes on order ${orderId}.\n\n${adminOrderUrl}`,
+          });
+        }
+      }
+
+      // Dealer requested changes after admin proposal
+      if (after.dealerRejectedAdminProposedAt && !before.dealerRejectedAdminProposedAt) {
+        if (notifications?.orderDealerProposalResponseEmail !== false && staffEmail) {
+          const note = (after.dealerRejectedAdminProposedNote as string | undefined)?.trim();
+          await sendEmail({
+            to: staffEmail,
+            subject: `[Ormsby] Dealer requested changes — ${orderId.slice(0, 8)}`,
+            text: `The dealer requested changes after your proposed update on order ${orderId}.${note ? `\n\nDealer note:\n${note}` : ""}\n\n${adminOrderUrl}`,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Order revision workflow email failed:", err);
     }
   });
 

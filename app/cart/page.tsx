@@ -11,6 +11,13 @@ import { db } from "@/lib/firebase";
 import { PricesDoc, GuitarDoc, AccountDoc, FxRatesDoc } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { fetchDealerFxRates } from "@/lib/fx-client";
+import { resolveDisplayCurrency } from "@/lib/display-currency";
+import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
+import {
+  computeEstimatedTaxAmount,
+  estimatedTaxLabelDisplay,
+  hasEstimatedTaxSettings,
+} from "@/lib/estimated-tax";
 
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat(undefined, {
@@ -23,6 +30,8 @@ function formatMoney(amount: number, currency: string) {
 
 export default function CartPage() {
   const { user, loading: authLoading } = useAuth();
+  const effectiveAccountId = useEffectiveAccountId();
+  const { isAdminDealerPreview } = useDealerView();
   const router = useRouter();
   const { items, updateQty, removeItem, subtotal } = useCart();
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
@@ -31,7 +40,7 @@ export default function CartPage() {
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loadingPrices, setLoadingPrices] = useState(true);
 
-  const displayCurrency = user?.currency ?? account?.currency ?? "AUD";
+  const displayCurrency = resolveDisplayCurrency(account, user);
   const fxRate =
     displayCurrency !== "AUD" ? fxRates?.rates[displayCurrency] : undefined;
 
@@ -53,7 +62,7 @@ export default function CartPage() {
 
   // Fetch account (for discount %), prices, and guitars for all cart items
   useEffect(() => {
-    const accountId = user?.accountId;
+    const accountId = effectiveAccountId;
     if (!accountId || items.length === 0) {
       setLoadingPrices(false);
       return;
@@ -90,11 +99,11 @@ export default function CartPage() {
     }
 
     fetchPricingData(accountId);
-  }, [items, user?.accountId]);
+  }, [items, effectiveAccountId]);
 
   // Dealer price = RRP × (1 - account.discountPercent/100)
   const itemsWithCurrentPrices = useMemo(() => {
-    if (!user?.accountId || loadingPrices) {
+    if (!effectiveAccountId || loadingPrices) {
       return items;
     }
 
@@ -113,7 +122,7 @@ export default function CartPage() {
       const unitPrice = getDealerPriceFromRRP(rrp, discountPercent);
       return { ...item, unitPrice };
     });
-  }, [items, pricesMap, guitarsMap, account?.discountPercent, user?.accountId, loadingPrices]);
+  }, [items, pricesMap, guitarsMap, account?.discountPercent, effectiveAccountId, loadingPrices]);
 
   // Subtotal in AUD (base)
   const currentSubtotal = useMemo(() => {
@@ -127,6 +136,11 @@ export default function CartPage() {
   const displaySubtotal =
     fxRate != null ? currentSubtotal * fxRate : currentSubtotal;
 
+  const estimatedTaxAmount = hasEstimatedTaxSettings(account ?? undefined)
+    ? computeEstimatedTaxAmount(displaySubtotal, account?.estimatedTaxPercent)
+    : 0;
+  const totalWithTaxEstimate = displaySubtotal + estimatedTaxAmount;
+
   if (authLoading) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -137,6 +151,23 @@ export default function CartPage() {
 
   if (!user) {
     return null;
+  }
+
+  if (isAdminDealerPreview) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16">
+        <p className="max-w-md text-center text-sm text-neutral-400">
+          The shopping cart isn&apos;t available in <strong className="text-neutral-200">dealer preview</strong>. Use{" "}
+          <strong className="text-neutral-200">Orders</strong> to see what this dealer sees.
+        </p>
+        <Link
+          href="/orders"
+          className="rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft"
+        >
+          View orders
+        </Link>
+      </main>
+    );
   }
 
   if (items.length === 0) {
@@ -349,15 +380,31 @@ export default function CartPage() {
                   {formatMoney(displaySubtotal, displayCurrency)}
                 </span>
               </div>
+              {estimatedTaxAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-neutral-400">
+                    {estimatedTaxLabelDisplay(account ?? undefined)} (
+                    {account?.estimatedTaxPercent}%)
+                  </span>
+                  <span className="font-medium text-white">
+                    {formatMoney(estimatedTaxAmount, displayCurrency)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 space-y-3">
               <div className="flex justify-between text-base font-semibold">
                 <span className="text-white">Total</span>
                 <span className="text-white">
-                  {formatMoney(displaySubtotal, displayCurrency)}
+                  {formatMoney(totalWithTaxEstimate, displayCurrency)}
                 </span>
               </div>
+              {estimatedTaxAmount > 0 && (
+                <p className="text-[11px] leading-relaxed text-neutral-500">
+                  Includes your estimated tax/tariff from Settings (reference only).
+                </p>
+              )}
 
               <Link
                 href="/checkout"

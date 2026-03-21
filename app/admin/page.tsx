@@ -5,7 +5,13 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderDoc, GuitarDoc, AccountRequestDoc, OrderLineDoc } from "@/lib/types";
+import {
+  OrderDoc,
+  GuitarDoc,
+  AccountRequestDoc,
+  OrderLineDoc,
+  AccountDoc,
+} from "@/lib/types";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -13,8 +19,26 @@ import {
   UserGroupIcon,
   CheckCircleIcon,
   ClockIcon,
+  BellAlertIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import {
+  buildOrderActivity,
+  formatRelativeTime,
+  readAdminOrdersLastSeenMs,
+  writeAdminOrdersLastSeenAsAllReadNow,
+  type OrderActivityItem,
+} from "@/lib/admin-order-notifications";
+
+const ORDER_STATUS_SHORT: Record<OrderDoc["status"], string> = {
+  DRAFT: "Draft",
+  SUBMITTED: "Submitted",
+  APPROVED: "Approved",
+  IN_PRODUCTION: "In production",
+  SHIPPED: "Shipped",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
 
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -28,6 +52,8 @@ export default function AdminDashboard() {
     pendingRequests: 0,
   });
   const [recentRequests, setRecentRequests] = useState<Array<AccountRequestDoc & { id: string }>>([]);
+  const [orderNotifications, setOrderNotifications] = useState<OrderActivityItem[]>([]);
+  const [unreadOrderCount, setUnreadOrderCount] = useState(0);
   const [inventory, setInventory] = useState<
     Array<{
       id: string;
@@ -51,8 +77,10 @@ export default function AdminDashboard() {
       return;
     }
 
-    async function fetchStats() {
-      setLoading(true);
+    async function loadDashboard(background: boolean) {
+      if (!background) {
+        setLoading(true);
+      }
       try {
         // Fetch guitars
         const guitarsRef = collection(db, "guitars");
@@ -121,6 +149,21 @@ export default function AdminDashboard() {
         // Fetch accounts
         const accountsRef = collection(db, "accounts");
         const accountsSnap = await getDocs(accountsRef);
+        const accountNames = new Map<string, string>();
+        accountsSnap.forEach((docSnap) => {
+          const d = docSnap.data() as AccountDoc;
+          accountNames.set(docSnap.id, d.name?.trim() || `Account ${docSnap.id.slice(0, 6)}`);
+        });
+
+        const lastSeen = readAdminOrdersLastSeenMs();
+        const { items: activityItems, unreadCount } = buildOrderActivity(
+          orders,
+          accountNames,
+          lastSeen,
+          15,
+        );
+        setOrderNotifications(activityItems);
+        setUnreadOrderCount(unreadCount);
 
         // Fetch pending account requests
         const requestsRef = collection(db, "accountRequests");
@@ -157,12 +200,22 @@ export default function AdminDashboard() {
       } catch (err) {
         console.error("Error fetching stats:", err);
       } finally {
-        setLoading(false);
+        if (!background) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchStats();
+    void loadDashboard(false);
+    const interval = setInterval(() => void loadDashboard(true), 45_000);
+    return () => clearInterval(interval);
   }, [user, authLoading, router]);
+
+  function markAllOrderNotificationsRead() {
+    writeAdminOrdersLastSeenAsAllReadNow();
+    setOrderNotifications((prev) => prev.map((row) => ({ ...row, isUnread: false })));
+    setUnreadOrderCount(0);
+  }
 
   if (authLoading || loading) {
     return (
@@ -231,6 +284,125 @@ export default function AdminDashboard() {
           </span>
         </div>
       </header>
+
+      {/* Order notifications */}
+      <section className="rounded-3xl border border-amber-500/25 bg-gradient-to-br from-amber-500/[0.09] to-black/20 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 ring-1 ring-amber-500/30">
+              <BellAlertIcon className="h-6 w-6 text-amber-300" aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-white">
+                Order notifications
+              </h2>
+              <p className="mt-1 max-w-xl text-sm text-neutral-400">
+                Submitted and draft orders (plus any that need revision review). Approved and
+                in‑pipeline orders are hidden here unless a dealer revision or confirmation is still
+                open. Unread = updated since you last marked read. Refreshes every 45 seconds.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {unreadOrderCount > 0 ? (
+              <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black">
+                {unreadOrderCount} unread
+              </span>
+            ) : (
+              <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-neutral-500">
+                All caught up
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={markAllOrderNotificationsRead}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:border-white/25 hover:bg-white/10"
+            >
+              Mark all as read
+            </button>
+            <Link
+              href="/admin/orders"
+              className="rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-black transition hover:bg-accent-soft"
+            >
+              View all orders
+            </Link>
+          </div>
+        </div>
+
+        <ul className="mt-5 space-y-2" aria-label="Recent order activity">
+          {orderNotifications.length === 0 ? (
+            <li className="rounded-2xl border border-white/5 bg-black/20 px-4 py-6 text-center text-sm text-neutral-500">
+              {stats.totalOrders > 0 ? (
+                <>
+                  Nothing in this feed right now — approved / in‑production / shipped / completed
+                  orders stay in{" "}
+                  <Link href="/admin/orders" className="text-accent-soft underline hover:text-accent">
+                    View all orders
+                  </Link>
+                  . They reappear here if a dealer revision or confirmation is pending.
+                </>
+              ) : (
+                "No orders in the system yet."
+              )}
+            </li>
+          ) : (
+            orderNotifications.map((row) => (
+              <li key={row.id}>
+                <Link
+                  href={`/admin/orders/${row.id}`}
+                  className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition hover:border-amber-500/35 hover:bg-white/[0.04] ${
+                    row.isUnread
+                      ? "border-amber-500/40 bg-amber-500/[0.07]"
+                      : "border-white/10 bg-black/20"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                      row.isUnread ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]" : "bg-neutral-600"
+                    }`}
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-semibold text-white">
+                        #{row.id.slice(0, 8).toUpperCase()}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          row.kind === "new"
+                            ? "bg-emerald-500/25 text-emerald-200"
+                            : "bg-blue-500/20 text-blue-200"
+                        }`}
+                      >
+                        {row.kind === "new" ? "New order" : "Updated"}
+                      </span>
+                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-neutral-400">
+                        {ORDER_STATUS_SHORT[row.status]}
+                      </span>
+                      {row.highlights.map((h) => (
+                        <span
+                          key={h}
+                          className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-100/90"
+                        >
+                          {h}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-neutral-500">
+                      {row.accountName ?? "Account"}{" "}
+                      <span className="text-neutral-600">·</span>{" "}
+                      <span className="font-mono text-[11px]">{row.accountId.slice(0, 8)}…</span>
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs text-neutral-500">
+                    {formatRelativeTime(row.updatedAtMs)}
+                  </span>
+                </Link>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
 
       {/* Stats + Quick actions */}
       <section className="grid gap-6 lg:grid-cols-3">
@@ -329,6 +501,10 @@ export default function AdminDashboard() {
           <div className="mt-4 space-y-2">
             {quickActions.map((action) => {
               const Icon = action.icon;
+              const orderBadge =
+                action.href === "/admin/orders" && unreadOrderCount > 0
+                  ? unreadOrderCount
+                  : null;
               return (
                 <Link
                   key={action.href}
@@ -336,8 +512,13 @@ export default function AdminDashboard() {
                   className="group flex items-center justify-between rounded-2xl px-3 py-2 text-sm text-neutral-200 transition-colors hover:bg-white/10"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-white/5 text-accent">
+                    <div className="relative flex h-8 w-8 items-center justify-center rounded-2xl bg-white/5 text-accent">
                       <Icon className="h-4 w-4" />
+                      {orderBadge != null && (
+                        <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-black">
+                          {orderBadge > 99 ? "99+" : orderBadge}
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-col">
                       <span className="font-medium">{action.title}</span>

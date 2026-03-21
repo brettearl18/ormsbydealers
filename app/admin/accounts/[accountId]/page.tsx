@@ -2,6 +2,8 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import { useDealerView } from "@/lib/dealer-view-context";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db, functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
@@ -98,6 +100,8 @@ export default function AccountDetailPage({
 }: {
   params: Promise<{ accountId: string }>;
 }) {
+  const router = useRouter();
+  const { setDealerView } = useDealerView();
   const { accountId } = use(params);
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
@@ -266,16 +270,31 @@ export default function AccountDetailPage({
               Account ID: {account.id}
             </p>
           </div>
-          {(account as any).status && (
-            <span
-              className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wide ${
-                STATUS_COLORS[(account as any).status as keyof typeof STATUS_COLORS] ||
-                STATUS_COLORS.APPROVED
-              }`}
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDealerView({
+                  accountId: account.id,
+                  accountName: account.name || account.id,
+                });
+                router.push("/orders");
+              }}
+              className="rounded-full border border-amber-500/50 bg-amber-500/15 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-100 transition hover:bg-amber-500/25"
             >
-              {(account as any).status || "APPROVED"}
-            </span>
-          )}
+              View as dealer
+            </button>
+            {(account as any).status && (
+              <span
+                className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wide ${
+                  STATUS_COLORS[(account as any).status as keyof typeof STATUS_COLORS] ||
+                  STATUS_COLORS.APPROVED
+                }`}
+              >
+                {(account as any).status || "APPROVED"}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Edit Account form */}

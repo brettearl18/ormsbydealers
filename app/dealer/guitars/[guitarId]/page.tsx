@@ -24,6 +24,8 @@ import { SpecTable } from "@/components/guitars/SpecTable";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
 import { ModelsAndVariants } from "@/components/guitars/ModelsAndVariants";
 import { fetchDealerFxRates } from "@/lib/fx-client";
+import { resolveDisplayCurrency } from "@/lib/display-currency";
+import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
 
 export default function GuitarDetailPage({
   params,
@@ -32,6 +34,8 @@ export default function GuitarDetailPage({
 }) {
   const { guitarId } = use(params);
   const { user, loading: authLoading } = useAuth();
+  const effectiveAccountId = useEffectiveAccountId();
+  const { isAdminDealerPreview } = useDealerView();
   const router = useRouter();
   const [guitar, setGuitar] = useState<GuitarDoc | null>(null);
   const [availability, setAvailability] = useState<AvailabilityDoc | null>(
@@ -62,12 +66,18 @@ export default function GuitarDetailPage({
       router.push("/login");
       return;
     }
-    if (!user.accountId || !user.tierId || !user.currency) {
+    if (user.role === "ADMIN" && !isAdminDealerPreview) {
+      router.push("/admin/accounts");
+      return;
+    }
+    if (!effectiveAccountId) {
       router.push("/dealer");
       return;
     }
 
     async function fetchGuitar() {
+      const accountIdForFetch = effectiveAccountId;
+      if (!accountIdForFetch) return;
       setFetching(true);
       setError(null);
       try {
@@ -76,7 +86,7 @@ export default function GuitarDetailPage({
             getDoc(doc(db, "guitars", guitarId)),
             getDoc(doc(db, "availability", guitarId)),
             getDoc(doc(db, "prices", guitarId)),
-            user?.accountId ? getDoc(doc(db, "accounts", user.accountId)) : Promise.resolve(null),
+            getDoc(doc(db, "accounts", accountIdForFetch)),
             fetchDealerFxRates(db),
           ]);
 
@@ -119,7 +129,7 @@ export default function GuitarDetailPage({
     }
 
     fetchGuitar();
-  }, [guitarId, user, authLoading, router]);
+  }, [guitarId, user, authLoading, router, effectiveAccountId, isAdminDealerPreview]);
 
   // Dealer price = RRP × (1 - account.discountPercent/100)
   type PriceSource = "BASE" | "PROMO" | "ACCOUNT_OVERRIDE" | "TIER" | null;
@@ -169,16 +179,18 @@ export default function GuitarDetailPage({
     }
   }, [selectedOptions, guitar]);
 
+  const dealerCurrency = resolveDisplayCurrency(account ?? undefined, user);
+
   // Calculate approximate local currency price (dealer price is already RRP × (1 - discount%))
   const approximateLocalUnit = useMemo(() => {
-    if (!effectivePrice.price || !fxRates || !user?.currency) return null;
+    if (!effectivePrice.price || !fxRates) return null;
     const rate =
-      user.currency === fxRates.base
+      dealerCurrency === fxRates.base
         ? 1
-        : fxRates.rates[user.currency] ?? null;
+        : fxRates.rates[dealerCurrency] ?? null;
     if (!rate) return null;
     return effectivePrice.price * rate;
-  }, [effectivePrice.price, fxRates, user?.currency]);
+  }, [effectivePrice.price, fxRates, dealerCurrency]);
 
   // Total RRP for selected variant (matches getRRPForVariant incl. legacy priceAdjustment → RRP)
   const displayRrp = useMemo(() => {
@@ -201,12 +213,22 @@ export default function GuitarDetailPage({
     return effectivePrice.price * rate;
   }, [effectivePrice.price, fxRates, selectedDisplayCurrency]);
 
-  // Initialize selected display currency to user's currency if available
+  // Match Settings / account currency (overrides stale JWT claims)
   useEffect(() => {
-    if (fxRates && !selectedDisplayCurrency && user?.currency) {
-      setSelectedDisplayCurrency(user.currency);
-    }
-  }, [fxRates, user?.currency]);
+    if (!fxRates) return;
+    const next = resolveDisplayCurrency(account ?? undefined, user);
+    setSelectedDisplayCurrency((prev) => {
+      if (!prev) return next;
+      if (
+        account?.currency &&
+        prev === user?.currency &&
+        account.currency !== user?.currency
+      ) {
+        return account.currency;
+      }
+      return prev;
+    });
+  }, [fxRates, account?.currency, user]);
 
   if (authLoading || fetching) {
     return (
@@ -230,7 +252,12 @@ export default function GuitarDetailPage({
     );
   }
 
-  if (!user || !user.accountId || !user.tierId || !user.currency) {
+  const resolvedTierId = account?.tierId ?? user?.tierId;
+  if (
+    !user ||
+    !effectiveAccountId ||
+    (!isAdminDealerPreview && !resolvedTierId)
+  ) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4">
         <p className="text-sm text-red-400">User account information incomplete</p>
@@ -284,6 +311,9 @@ export default function GuitarDetailPage({
   };
 
   const onAddToCart = () => {
+    if (isAdminDealerPreview) {
+      return;
+    }
     if (effectivePrice.price == null) {
       alert("Price not available for this product");
       return;
@@ -500,7 +530,7 @@ export default function GuitarDetailPage({
               <div className="flex items-center gap-2">
                 <label className="text-xs text-neutral-500">Show in</label>
                 <select
-                  value={selectedDisplayCurrency || user?.currency || "USD"}
+                  value={selectedDisplayCurrency || dealerCurrency}
                   onChange={(e) => setSelectedDisplayCurrency(e.target.value)}
                   disabled={!fxRates}
                   className="rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-sm text-white outline-none focus:border-accent disabled:opacity-50"
@@ -717,9 +747,15 @@ export default function GuitarDetailPage({
 
           {/* Add to Cart Button */}
           <div className="space-y-3">
+            {isAdminDealerPreview && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-100">
+                Cart is disabled in dealer preview.
+              </p>
+            )}
             <button
               type="button"
               disabled={
+                isAdminDealerPreview ||
                 effectivePrice.price == null ||
                 !validateOptions() ||
                 addingToCart ||

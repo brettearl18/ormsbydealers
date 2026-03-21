@@ -36,7 +36,7 @@ service cloud.firestore {
     
     // Accounts collection: users can read their own account; dealers can update their own (e.g. currency preference)
     match /accounts/{accountId} {
-      allow read: if isAuthenticated() && ownsAccount(accountId);
+      allow read: if isAuthenticated() && (ownsAccount(accountId) || isAdmin());
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (isAuthenticated() && ownsAccount(accountId));
     }
@@ -94,7 +94,7 @@ service cloud.firestore {
     // Orders collection: users can read/write orders for their account
     match /orders/{orderId} {
       allow read: if isAuthenticated() && 
-                     resource.data.accountId == getUserAccountId();
+                     (resource.data.accountId == getUserAccountId() || isAdmin());
       allow create: if isAuthenticated() && 
                        request.resource.data.accountId == getUserAccountId() &&
                        request.resource.data.createdByUid == request.auth.uid;
@@ -104,8 +104,10 @@ service cloud.firestore {
       
       // Order lines subcollection
       match /lines/{lineId} {
-        allow read: if isAuthenticated() && 
-                       get(/databases/$(database)/documents/orders/$(orderId)).data.accountId == getUserAccountId();
+        allow read: if isAuthenticated() && (
+                       isAdmin() ||
+                       get(/databases/$(database)/documents/orders/$(orderId)).data.accountId == getUserAccountId()
+                     );
         // Dealers can only add/remove/update lines before production starts.
         // Once the order is in production (or later), dealers must use add/remove request flows.
         allow write: if isAuthenticated() && (

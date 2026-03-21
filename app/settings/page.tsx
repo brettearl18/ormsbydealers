@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useDealerView } from "@/lib/dealer-view-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { deleteField, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { AccountDoc, FxRatesDoc, ShippingAddress } from "@/lib/types";
 import { fetchDealerFxRates } from "@/lib/fx-client";
@@ -126,6 +127,7 @@ function toShippingAddress(a: Partial<ShippingAddress>): ShippingAddress | undef
 
 export default function SettingsPage() {
   const { user, loading } = useAuth();
+  const { isAdminDealerPreview, dealerView } = useDealerView();
   const router = useRouter();
   const [account, setAccount] = useState<(AccountDoc & { id: string }) | null>(null);
   const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
@@ -144,11 +146,15 @@ export default function SettingsPage() {
       router.push("/login");
       return;
     }
+    if (!loading && user && isAdminDealerPreview && dealerView?.accountId) {
+      router.replace(`/admin/accounts/${dealerView.accountId}`);
+      return;
+    }
     if (!user?.accountId) {
       router.push("/dashboard");
       return;
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, isAdminDealerPreview, dealerView?.accountId]);
 
   useEffect(() => {
     const accountId = user?.accountId;
@@ -199,15 +205,25 @@ export default function SettingsPage() {
       const rawPercent = estimatedTaxPercent.trim()
         ? parseFloat(estimatedTaxPercent)
         : undefined;
-      const taxPercent =
+      let taxPercent =
         rawPercent != null && !Number.isNaN(rawPercent) ? rawPercent : null;
+      // Type "None" — clear Firestore fields so cart/checkout don’t use stale %.
+      if (!taxLabel) {
+        taxPercent = null;
+      }
+
       const payload: Record<string, unknown> = {
         currency,
         ...(billing && { billingAddress: billing }),
         ...(shipping && { shippingAddress: shipping }),
-        ...(taxLabel && { estimatedTaxLabel: taxLabel }),
-        estimatedTaxPercent: taxPercent,
       };
+      if (!taxLabel) {
+        payload.estimatedTaxLabel = deleteField();
+        payload.estimatedTaxPercent = deleteField();
+      } else {
+        payload.estimatedTaxLabel = taxLabel;
+        payload.estimatedTaxPercent = taxPercent;
+      }
       await updateDoc(doc(db, "accounts", user.accountId), payload);
       setAccount((prev) =>
         prev
@@ -216,8 +232,9 @@ export default function SettingsPage() {
               currency,
               ...(billing && { billingAddress: billing }),
               ...(shipping && { shippingAddress: shipping }),
-              ...(taxLabel && { estimatedTaxLabel: taxLabel }),
-              estimatedTaxPercent: taxPercent ?? undefined,
+              ...(!taxLabel
+                ? { estimatedTaxLabel: undefined, estimatedTaxPercent: undefined }
+                : { estimatedTaxLabel: taxLabel, estimatedTaxPercent: taxPercent ?? undefined }),
             }
           : null
       );
@@ -323,7 +340,9 @@ export default function SettingsPage() {
         <div className="rounded-2xl bg-surface/80 p-6 shadow-soft">
           <h2 className="text-lg font-semibold text-white">Estimated tax &amp; tariff</h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Optional. Set a label and percentage for your own cost estimation (e.g. VAT, GST, import duty). For reference only; actual charges are determined at order time.
+            Optional. Set a label and percentage for your own cost estimation (e.g. VAT, GST, import duty). The amount is added on{" "}
+            <strong className="text-neutral-300">Cart</strong> and <strong className="text-neutral-300">Checkout</strong>{" "}
+            (reference only; actual charges are determined at order time).
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
@@ -410,6 +429,39 @@ export default function SettingsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
           </a>
+
+          {fxRates?.rates && Object.keys(fxRates.rates).length > 0 ? (
+            <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
+              <p className="border-b border-white/10 bg-black/30 px-3 py-2 text-[11px] uppercase tracking-wide text-neutral-500">
+                Daily reference (1 AUD →)
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-wide text-neutral-500">
+                    <th className="px-3 py-2 font-medium">Currency</th>
+                    <th className="px-3 py-2 font-medium">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["USD", "EUR", "GBP", "CAD"] as const).map((code) => {
+                    const rate = fxRates.rates[code];
+                    if (rate == null || Number.isNaN(rate)) return null;
+                    return (
+                      <tr key={code} className="border-b border-white/5 last:border-0">
+                        <td className="px-3 py-2.5 font-medium text-white">{code}</td>
+                        <td className="px-3 py-2.5 font-mono tabular-nums text-neutral-200">
+                          {rate.toFixed(5)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="border-t border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-500">
+                Same rates used when displaying prices in USD, EUR, GBP, or CAD.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {message && (

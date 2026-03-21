@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { useDealerView } from "@/lib/dealer-view-context";
 import { useCart } from "@/lib/cart-context";
 import { signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -20,6 +21,7 @@ const DEFAULT_BRANDING: AdminBrandingSettings = {
 
 export function Navigation() {
   const { user, loading } = useAuth();
+  const { isAdminDealerPreview, dealerView, exitDealerView } = useDealerView();
   const { items } = useCart();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -112,7 +114,30 @@ export function Navigation() {
   }
 
   return (
-    <nav className="glass-strong flex items-center justify-between border-b border-white/5 px-6 py-5">
+    <>
+      {isAdminDealerPreview && dealerView && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
+          <p className="min-w-0 flex-1">
+            <span className="font-semibold text-amber-200">Dealer preview:</span>{" "}
+            <span className="truncate">{dealerView.accountName}</span>
+            <span className="ml-2 hidden text-xs text-amber-200/80 sm:inline">
+              (read-only — same orders as this dealer)
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              const id = dealerView.accountId;
+              exitDealerView();
+              router.push(`/admin/accounts/${id}`);
+            }}
+            className="shrink-0 rounded-full border border-amber-400/50 bg-black/30 px-4 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-black/50"
+          >
+            Exit preview
+          </button>
+        </div>
+      )}
+      <nav className="glass-strong flex items-center justify-between border-b border-white/5 px-6 py-5">
       <div className="flex items-center gap-4">
         <Link
           href="/dashboard"
@@ -130,7 +155,7 @@ export function Navigation() {
           )}
         </Link>
         <div className="hidden items-center gap-2 md:flex">
-          {user.role === "ADMIN" ? (
+          {user.role === "ADMIN" && !isAdminDealerPreview ? (
             <>
               <Link
                 href="/admin"
@@ -287,7 +312,7 @@ export function Navigation() {
         <div className="absolute inset-x-0 top-[64px] z-40 border-b border-white/10 bg-black/95 px-4 pb-4 pt-2 shadow-lg md:hidden">
           <div className="space-y-3">
             <div className="flex flex-col gap-2 text-xs">
-              {user.role === "ADMIN" ? (
+              {user.role === "ADMIN" && !isAdminDealerPreview ? (
                 <>
                   <Link
                     href="/admin"
@@ -392,6 +417,7 @@ export function Navigation() {
         </div>
       )}
     </nav>
+    </>
   );
 }
 

@@ -2,13 +2,22 @@ import { SessionUser } from "@/lib/auth-context";
 
 interface Props {
   user: SessionUser;
+  /** Prefer Firestore account currency (Settings); overrides token claims */
+  currency?: string | null;
   accountName?: string;
   territory?: string;
   /** Dealer discount % off RRP (e.g. 30 = 30% off). Shown prominently so dealers see their pricing. */
   discountPercent?: number | null;
 }
 
-export function AccountInfoCard({ user, accountName, territory, discountPercent }: Props) {
+export function AccountInfoCard({
+  user,
+  currency,
+  accountName,
+  territory,
+  discountPercent,
+}: Props) {
+  const displayCurrency = currency?.trim() || user.currency || "—";
   const hasDiscount = discountPercent != null && discountPercent > 0;
 
   return (
@@ -49,14 +58,12 @@ export function AccountInfoCard({ user, accountName, territory, discountPercent 
             <p className="mt-0.5 text-sm font-semibold text-accent">{user.tierId}</p>
           </div>
         )}
-        {user.currency && (
-          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-              Currency
-            </p>
-            <p className="mt-0.5 text-sm font-semibold text-white">{user.currency}</p>
-          </div>
-        )}
+        <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+            Currency
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-white">{displayCurrency}</p>
+        </div>
         {!hasDiscount && (discountPercent === 0 || discountPercent == null) && (
           <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">

@@ -29,6 +29,9 @@ const DEFAULT_NOTIFICATIONS: AdminNotificationSettings = {
   orderStatusChangedEmail: true,
   accountRequestEmail: true,
   dailySummaryEmail: false,
+  orderDealerRevisionSubmittedEmail: true,
+  orderAdminProposedChangesEmail: true,
+  orderDealerProposalResponseEmail: true,
 };
 
 export default function AdminSettingsPage() {
@@ -191,7 +194,10 @@ export default function AdminSettingsPage() {
               <p className="mt-2 text-sm text-neutral-300">
                 {notifications.orderCreatedEmail ||
                 notifications.orderStatusChangedEmail ||
-                notifications.accountRequestEmail
+                notifications.accountRequestEmail ||
+                notifications.orderDealerRevisionSubmittedEmail ||
+                notifications.orderAdminProposedChangesEmail ||
+                notifications.orderDealerProposalResponseEmail
                   ? "Key alerts enabled"
                   : "All email alerts disabled"}
               </p>
@@ -671,6 +677,71 @@ export default function AdminSettingsPage() {
                       <span className="font-medium">Daily summary</span>
                       <span className="block text-xs text-neutral-400">
                         Once-a-day digest of new orders and account activity.
+                      </span>
+                    </span>
+                  </label>
+
+                  <p className="pt-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                    Order revision workflow
+                  </p>
+
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60"
+                      checked={notifications.orderDealerRevisionSubmittedEmail !== false}
+                      onChange={(e) =>
+                        setNotifications((prev) => ({
+                          ...prev,
+                          orderDealerRevisionSubmittedEmail: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">Dealer submitted order updates</span>
+                      <span className="block text-xs text-neutral-400">
+                        Email staff (support email in branding) when a dealer sends an order back for
+                        Ormsby review.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60"
+                      checked={notifications.orderAdminProposedChangesEmail !== false}
+                      onChange={(e) =>
+                        setNotifications((prev) => ({
+                          ...prev,
+                          orderAdminProposedChangesEmail: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">Ormsby proposed changes to dealer</span>
+                      <span className="block text-xs text-neutral-400">
+                        Email the dealer when you submit line/qty/price updates for them to confirm.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-white/20 bg-black/60 text-accent focus:ring-accent/60"
+                      checked={notifications.orderDealerProposalResponseEmail !== false}
+                      onChange={(e) =>
+                        setNotifications((prev) => ({
+                          ...prev,
+                          orderDealerProposalResponseEmail: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">Dealer accepted / requested changes</span>
+                      <span className="block text-xs text-neutral-400">
+                        Email staff when the dealer accepts your proposal or asks for changes.
                       </span>
                     </span>
                   </label>

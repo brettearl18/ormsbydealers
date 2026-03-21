@@ -3,6 +3,7 @@
 import { FormEvent, useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useDealerView } from "@/lib/dealer-view-context";
 import { useCart, CartItem } from "@/lib/cart-context";
 import { httpsCallable } from "firebase/functions";
 import { functions, db, auth } from "@/lib/firebase";
@@ -10,12 +11,19 @@ import { getIdToken } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { AccountDoc, AdminSettingsDoc, PricesDoc, GuitarDoc } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { resolveDisplayCurrency } from "@/lib/display-currency";
+import {
+  computeEstimatedTaxAmount,
+  estimatedTaxLabelDisplay,
+  hasEstimatedTaxSettings,
+} from "@/lib/estimated-tax";
 import Link from "next/link";
 import { OrderReviewItem } from "@/components/checkout/OrderReviewItem";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
+  const { isAdminDealerPreview } = useDealerView();
   const { items, subtotal, clear } = useCart();
   const router = useRouter();
 
@@ -90,6 +98,14 @@ export default function CheckoutPage() {
   }, [user, authLoading, items.length]);
 
   const discountPercent = account?.discountPercent ?? 0;
+  const displayCurrency = resolveDisplayCurrency(account, user);
+  const money = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: displayCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
   const itemsWithPrices: CartItem[] = useMemo(() => {
     return items.map((item) => {
       const prices = pricesMap.get(item.guitarId);
@@ -108,6 +124,11 @@ export default function CheckoutPage() {
     () => itemsWithPrices.reduce((sum, i) => sum + i.unitPrice * i.qty, 0),
     [itemsWithPrices],
   );
+
+  const checkoutEstimatedTax = hasEstimatedTaxSettings(account ?? undefined)
+    ? computeEstimatedTaxAmount(checkoutSubtotal, account?.estimatedTaxPercent)
+    : 0;
+  const checkoutTotalWithTaxEstimate = checkoutSubtotal + checkoutEstimatedTax;
 
   // Fetch terms template from admin settings
   useEffect(() => {
@@ -168,6 +189,22 @@ export default function CheckoutPage() {
 
   if (!user) {
     return null;
+  }
+
+  if (isAdminDealerPreview) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16">
+        <p className="max-w-md text-center text-sm text-neutral-400">
+          Checkout isn&apos;t available in dealer preview. Open <strong className="text-neutral-200">Orders</strong> from the nav to see this dealer&apos;s orders.
+        </p>
+        <Link
+          href="/orders"
+          className="rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black transition hover:bg-accent-soft"
+        >
+          View orders
+        </Link>
+      </main>
+    );
   }
 
   if (items.length === 0) {
@@ -528,13 +565,24 @@ export default function CheckoutPage() {
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-400">Subtotal</span>
-                <span className="font-medium text-white">
-                  {user.currency === "USD" ? "$" : user.currency}{" "}
-                  {checkoutSubtotal.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
+                <span className="font-medium text-white">{money(checkoutSubtotal)}</span>
+              </div>
+
+              {checkoutEstimatedTax > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-neutral-400">
+                    {estimatedTaxLabelDisplay(account ?? undefined)} (
+                    {account?.estimatedTaxPercent}%)
+                  </span>
+                  <span className="font-medium text-white">
+                    {money(checkoutEstimatedTax)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm font-semibold text-white">
+                <span>Estimated total (incl. tax/tariff)</span>
+                <span>{money(checkoutTotalWithTaxEstimate)}</span>
               </div>
 
               {/* Deposit Calculation */}
@@ -543,11 +591,7 @@ export default function CheckoutPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-neutral-400">Deposit Required</span>
                     <span className="font-semibold text-accent">
-                      {user.currency === "USD" ? "$" : user.currency}{" "}
-                      {(items.reduce((sum, item) => sum + item.qty, 0) * 200).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {money(items.reduce((sum, item) => sum + item.qty, 0) * 200)}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
@@ -556,6 +600,11 @@ export default function CheckoutPage() {
                 </div>
               )}
 
+              {checkoutEstimatedTax > 0 && (
+                <p className="text-[11px] leading-relaxed text-neutral-500">
+                  Tax/tariff % comes from Settings → Estimated tax &amp; tariff (reference only).
+                </p>
+              )}
             </div>
 
             {/* Action Buttons */}

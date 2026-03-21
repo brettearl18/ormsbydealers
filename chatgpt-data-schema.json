@@ -164,7 +164,18 @@
       "updatedAt": { "type": "string", "format": "ISO 8601" },
       "invoiceUrl": { "type": "string" },
       "invoiceUploadedAt": { "type": "string" },
-      "etaDate": { "type": "string" }
+      "etaDate": { "type": "string" },
+      "resubmittedAt": { "type": "string", "description": "Dealer resubmitted a completed order to Ormsby (status → Submitted)." },
+      "resubmittedFromStatus": { "type": "string", "description": "Prior status (e.g. COMPLETED) when resubmitted." },
+      "dealerNotifiedOrmsbyOfUpdatesAt": { "type": "string", "description": "Dealer asked Ormsby to review after adding new lines (Submitted/Approved orders)." },
+      "pendingOrmsbyRevisionReview": { "type": "boolean", "description": "True after dealer submits updated order; dealer sees Pending approval until admin approves." },
+      "revisionReviewedAt": { "type": "string", "description": "When admin approved the dealer revision or cleared pending via propose flow." },
+      "dealerPendingAdminProposedChanges": { "type": "boolean", "description": "True after admin submits proposed line/qty/price updates; dealer must accept or request changes." },
+      "adminProposedChangesAt": { "type": "string", "description": "ISO time when admin sent proposed changes to dealer." },
+      "adminProposedChangesNote": { "type": "string | null", "description": "Optional note from Ormsby shown to dealer." },
+      "dealerAcceptedAdminChangesAt": { "type": "string", "description": "When dealer accepted admin's proposed changes." },
+      "dealerRejectedAdminProposedAt": { "type": "string", "description": "When dealer chose Request changes after admin proposal." },
+      "dealerRejectedAdminProposedNote": { "type": "string | null", "description": "Optional dealer note when requesting changes." }
     }
   },
 
@@ -178,7 +189,15 @@
       "qty": { "type": "number", "required": true },
       "unitPrice": { "type": "number", "required": true },
       "lineTotal": { "type": "number", "required": true },
-      "selectedOptions": { "type": "object", "description": "optionId -> valueId" }
+      "selectedOptions": { "type": "object", "description": "optionId -> valueId" },
+      "isNewOnOrder": {
+        "type": "boolean",
+        "description": "Line added after initial order (dealer add or Ormsby-approved add). NEW badge + green card."
+      },
+      "addedViaOrmsbyApproval": {
+        "type": "boolean",
+        "description": "Legacy; same intent as isNewOnOrder for older documents."
+      }
     }
   },
 

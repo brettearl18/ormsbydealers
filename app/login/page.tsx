@@ -41,9 +41,14 @@ export default function LoginPage() {
       const token = await userCredential.user.getIdTokenResult();
       const role = token.claims.role as string | undefined;
       const accountId = token.claims.accountId as string | undefined;
+      const mustChangePassword = Boolean(token.claims.mustChangePassword);
       
       // Admins don't need accountId - they can sign in with just the ADMIN role
       if (role === "ADMIN") {
+        if (mustChangePassword) {
+          router.push("/update-password");
+          return;
+        }
         router.push("/admin");
         return;
       }
@@ -71,6 +76,10 @@ export default function LoginPage() {
       }
       
       // User is approved - redirect to dashboard
+      if (mustChangePassword) {
+        router.push("/update-password");
+        return;
+      }
       router.push("/dashboard");
     } catch (err: any) {
       if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {

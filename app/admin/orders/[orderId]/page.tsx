@@ -2,7 +2,16 @@
 
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, collection, getDocs, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  updateDoc,
+  writeBatch,
+  Timestamp,
+  deleteDoc,
+} from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import {
@@ -33,6 +42,15 @@ const STATUS_OPTIONS: OrderStatus[] = [
   "COMPLETED",
   "CANCELLED",
 ];
+
+/** Two decimal places for unit price inputs and Firestore (currency). */
+function formatUnitPriceForInput(n: number): string {
+  return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+}
+
+function roundMoney2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
 
 export default function AdminOrderDetailPage({
   params,
@@ -67,8 +85,29 @@ export default function AdminOrderDetailPage({
   const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
   const [etaDate, setEtaDate] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [approvingRevision, setApprovingRevision] = useState(false);
   const [updatingEta, setUpdatingEta] = useState(false);
   const [recalculatingPrices, setRecalculatingPrices] = useState(false);
+
+  /** Inline line edits (qty / unit price) before “Submit proposed changes to dealer”. */
+  const [lineDrafts, setLineDrafts] = useState<
+    Record<string, { qty: string; unitPrice: string }>
+  >({});
+  const [savingLineId, setSavingLineId] = useState<string | null>(null);
+  const [removingLineId, setRemovingLineId] = useState<string | null>(null);
+  const [adminProposeNote, setAdminProposeNote] = useState("");
+  const [submittingProposedChanges, setSubmittingProposedChanges] = useState(false);
+
+  useEffect(() => {
+    const next: Record<string, { qty: string; unitPrice: string }> = {};
+    for (const l of orderLines) {
+      next[l.id] = {
+        qty: String(l.qty),
+        unitPrice: formatUnitPriceForInput(l.unitPrice),
+      };
+    }
+    setLineDrafts(next);
+  }, [orderLines]);
 
   useEffect(() => {
     fetchOrder();
@@ -262,6 +301,122 @@ export default function AdminOrderDetailPage({
     }
   }
 
+  async function handleApproveDealerRevision() {
+    if (!order || !order.pendingOrmsbyRevisionReview) return;
+
+    setApprovingRevision(true);
+    try {
+      await updateDoc(doc(db, "orders", orderId), {
+        pendingOrmsbyRevisionReview: false,
+        revisionReviewedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      await fetchOrder();
+      alert('Revision approved — dealer will no longer see "Pending approval" for this update.');
+    } catch (err) {
+      console.error("Error approving revision:", err);
+      alert("Failed to approve revision");
+    } finally {
+      setApprovingRevision(false);
+    }
+  }
+
+  async function handleSaveLine(lineId: string) {
+    if (!order) return;
+    const draft = lineDrafts[lineId];
+    if (!draft) return;
+    const qty = parseInt(draft.qty, 10);
+    const unitPrice = parseFloat(draft.unitPrice);
+    if (!Number.isFinite(qty) || qty < 1) {
+      alert("Quantity must be a whole number ≥ 1.");
+      return;
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      alert("Unit price must be a valid number ≥ 0.");
+      return;
+    }
+    const unitPrice2 = roundMoney2(unitPrice);
+    const lineTotal = roundMoney2(qty * unitPrice2);
+    const newSubtotal = roundMoney2(
+      orderLines.reduce((sum, l) => {
+        if (l.id === lineId) return sum + lineTotal;
+        return sum + l.lineTotal;
+      }, 0),
+    );
+
+    setSavingLineId(lineId);
+    try {
+      await updateDoc(doc(db, "orders", orderId, "lines", lineId), {
+        qty,
+        unitPrice: unitPrice2,
+        lineTotal,
+      });
+      await updateDoc(doc(db, "orders", orderId), {
+        totals: { subtotal: newSubtotal, currency: order.currency },
+        updatedAt: new Date().toISOString(),
+      });
+      await fetchOrder();
+    } catch (err) {
+      console.error("Error saving line:", err);
+      alert("Failed to save line");
+    } finally {
+      setSavingLineId(null);
+    }
+  }
+
+  async function handleRemoveLine(lineId: string) {
+    if (!order) return;
+    if (!window.confirm("Remove this line from the order? This cannot be undone.")) return;
+
+    setRemovingLineId(lineId);
+    try {
+      const remaining = orderLines.filter((l) => l.id !== lineId);
+      const newSubtotal = roundMoney2(
+        remaining.reduce((sum, l) => sum + l.lineTotal, 0),
+      );
+      await deleteDoc(doc(db, "orders", orderId, "lines", lineId));
+      await updateDoc(doc(db, "orders", orderId), {
+        totals: { subtotal: newSubtotal, currency: order.currency },
+        updatedAt: new Date().toISOString(),
+      });
+      await fetchOrder();
+    } catch (err) {
+      console.error("Error removing line:", err);
+      alert("Failed to remove line");
+    } finally {
+      setRemovingLineId(null);
+    }
+  }
+
+  async function handleSubmitProposedChangesToDealer() {
+    if (!order || order.status === "DRAFT") return;
+    if (order.dealerPendingAdminProposedChanges) {
+      alert("This order is already waiting for the dealer to confirm.");
+      return;
+    }
+
+    setSubmittingProposedChanges(true);
+    try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, "orders", orderId), {
+        pendingOrmsbyRevisionReview: false,
+        ...(order.pendingOrmsbyRevisionReview ? { revisionReviewedAt: now } : {}),
+        dealerPendingAdminProposedChanges: true,
+        adminProposedChangesAt: now,
+        adminProposedChangesNote: adminProposeNote.trim() || null,
+        updatedAt: now,
+      });
+      await fetchOrder();
+      setAdminProposeNote("");
+      alert("Proposed changes sent — the dealer can accept or request changes.");
+    } catch (err) {
+      console.error("Error submitting proposed changes:", err);
+      alert("Failed to submit proposed changes");
+    } finally {
+      setSubmittingProposedChanges(false);
+    }
+  }
+
   async function handleRecalculatePrices() {
     if (!order || orderLines.length === 0) return;
 
@@ -413,6 +568,8 @@ export default function AdminOrderDetailPage({
         unitPrice,
         lineTotal,
         selectedOptions: req.selectedOptions ?? null,
+        isNewOnOrder: true,
+        addedViaOrmsbyApproval: true,
       });
       await batch.commit();
 
@@ -444,11 +601,20 @@ export default function AdminOrderDetailPage({
 
   async function handleRejectAddRequest(requestId: string) {
     if (!order || processingRequests) return;
+    const note =
+      typeof window !== "undefined"
+        ? window.prompt(
+            "Optional note to the dealer (why this was rejected). Cancel to abort rejection.",
+          )
+        : null;
+    if (note === null) return;
+
     setProcessingRequests(true);
     try {
       await updateDoc(doc(db, "orders", orderId, "addRequests", requestId), {
         status: "REJECTED",
         processedAt: new Date().toISOString(),
+        rejectionReason: note.trim() || null,
       });
       await fetchOrder();
       alert("Add request rejected.");
@@ -592,7 +758,48 @@ export default function AdminOrderDetailPage({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {order.pendingOrmsbyRevisionReview && (
+              <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                Revision pending approval
+              </span>
+            )}
+            {order.dealerPendingAdminProposedChanges && (
+              <span
+                className="rounded-full border border-violet-500/40 bg-violet-500/20 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200"
+                title="Dealer must confirm line/qty/price updates"
+              >
+                Awaiting dealer confirmation
+              </span>
+            )}
+            {order.dealerNotifiedOrmsbyOfUpdatesAt && (
+              <span
+                className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
+                title="Dealer submitted updated order for review"
+              >
+                Update submitted{" "}
+                {new Date(order.dealerNotifiedOrmsbyOfUpdatesAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            )}
+            {order.resubmittedAt && (
+              <span
+                className="rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-sky-300"
+                title={
+                  order.resubmittedFromStatus
+                    ? `Resubmitted from ${order.resubmittedFromStatus}`
+                    : undefined
+                }
+              >
+                Dealer resubmit{" "}
+                {new Date(order.resubmittedAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            )}
             <span
               className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wide ${
                 order.status === "SUBMITTED"
@@ -643,10 +850,23 @@ export default function AdminOrderDetailPage({
                     }
                   }
 
+                  const isNewAddition =
+                    line.isNewOnOrder === true || line.addedViaOrmsbyApproval === true;
+                  const isDealerDirectNewLine =
+                    line.isNewOnOrder === true && line.addedViaOrmsbyApproval !== true;
+                  const linePendingOrmsbyReview =
+                    order.pendingOrmsbyRevisionReview === true && isDealerDirectNewLine;
+
                   return (
                     <div
                       key={line.id}
-                      className="rounded-lg border border-white/10 bg-black/20 p-4"
+                      className={
+                        linePendingOrmsbyReview
+                          ? "rounded-lg border-2 border-amber-500/50 bg-amber-500/[0.08] p-4 shadow-[0_0_24px_-12px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/25"
+                          : isNewAddition
+                            ? "rounded-lg border-2 border-emerald-500/50 bg-emerald-500/[0.07] p-4 shadow-[0_0_24px_-12px_rgba(16,185,129,0.45)] ring-1 ring-emerald-500/25"
+                            : "rounded-lg border border-white/10 bg-black/20 p-4"
+                      }
                     >
                       <div className="flex gap-4">
                         {imageUrl && (
@@ -661,7 +881,21 @@ export default function AdminOrderDetailPage({
                         )}
                         <div className="flex-1 flex items-start justify-between">
                           <div>
-                            <h3 className="font-semibold text-white">{line.name}</h3>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-semibold text-white">{line.name}</h3>
+                              {linePendingOrmsbyReview ? (
+                                <span
+                                  className="rounded-full border border-amber-400/35 bg-amber-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-100"
+                                  title="Dealer submitted this addition for review"
+                                >
+                                  Pending
+                                </span>
+                              ) : isNewAddition ? (
+                                <span className="rounded-full border border-emerald-400/30 bg-emerald-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+                                  New
+                                </span>
+                              ) : null}
+                            </div>
                             <p className="mt-1 text-xs text-neutral-400">SKU: {line.sku}</p>
                             {line.selectedOptions &&
                               Object.keys(line.selectedOptions).length > 0 && (
@@ -676,17 +910,73 @@ export default function AdminOrderDetailPage({
                                 </div>
                               )}
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold text-white">
-                              Qty: {line.qty}
-                            </p>
-                            <p className="text-xs text-neutral-400">
-                              {order.currency === "USD" ? "$" : order.currency}{" "}
+                          <div className="text-right min-w-[11rem]">
+                            <div className="flex flex-col items-end gap-2">
+                              <label className="block w-full text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-500 sm:text-right">
+                                Qty
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={lineDrafts[line.id]?.qty ?? String(line.qty)}
+                                  onChange={(e) =>
+                                    setLineDrafts((prev) => ({
+                                      ...prev,
+                                      [line.id]: {
+                                        qty: e.target.value,
+                                        unitPrice:
+                                          prev[line.id]?.unitPrice ??
+                                          formatUnitPriceForInput(line.unitPrice),
+                                      },
+                                    }))
+                                  }
+                                  className="mt-0.5 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white outline-none focus:border-accent sm:max-w-[5rem] sm:text-right"
+                                />
+                              </label>
+                              <label className="block w-full text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-500 sm:text-right">
+                                Unit ({order.currency})
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  value={
+                                    lineDrafts[line.id]?.unitPrice ??
+                                    formatUnitPriceForInput(line.unitPrice)
+                                  }
+                                  onChange={(e) =>
+                                    setLineDrafts((prev) => ({
+                                      ...prev,
+                                      [line.id]: {
+                                        qty: prev[line.id]?.qty ?? String(line.qty),
+                                        unitPrice: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  onBlur={() => {
+                                    setLineDrafts((prev) => {
+                                      const d = prev[line.id];
+                                      const raw = parseFloat(d?.unitPrice ?? "");
+                                      if (!Number.isFinite(raw)) return prev;
+                                      return {
+                                        ...prev,
+                                        [line.id]: {
+                                          qty: d?.qty ?? String(line.qty),
+                                          unitPrice: formatUnitPriceForInput(raw),
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  className="mt-0.5 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white outline-none focus:border-accent sm:max-w-[6.5rem] sm:text-right"
+                                />
+                              </label>
+                            </div>
+                            <p className="mt-2 text-xs text-neutral-400">
+                              Saved: {order.currency === "USD" ? "$" : order.currency}{" "}
                               {line.unitPrice.toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}{" "}
-                              each
+                              × {line.qty}
                             </p>
                             {(() => {
                               const prices = pricesMap.get(line.guitarId);
@@ -720,6 +1010,22 @@ export default function AdminOrderDetailPage({
                               total
                             </p>
                             <div className="mt-2 flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveLine(line.id)}
+                                disabled={savingLineId !== null || removingLineId !== null}
+                                className="rounded-lg bg-accent/90 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-accent disabled:opacity-50"
+                              >
+                                {savingLineId === line.id ? "Saving…" : "Save line"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveLine(line.id)}
+                                disabled={removingLineId !== null || savingLineId !== null}
+                                className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                              >
+                                {removingLineId === line.id ? "Removing…" : "Remove line"}
+                              </button>
                               <Link
                                 href={`/admin/pricing/${line.guitarId}`}
                                 className="text-xs text-accent hover:text-accent-soft"
@@ -785,6 +1091,126 @@ export default function AdminOrderDetailPage({
                 ))}
               </div>
             </div>
+
+            {order.pendingOrmsbyRevisionReview && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6">
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-amber-200/90">
+                  Dealer revision
+                </h2>
+                <p className="mb-4 text-xs text-neutral-400">
+                  The dealer submitted updated line items and is waiting for Ormsby to review. Adjust
+                  qty/prices or remove lines above, then either approve as-is or send your changes to
+                  the dealer for confirmation.
+                </p>
+                {order.dealerNotifiedOrmsbyOfUpdatesAt && (
+                  <p className="mb-4 text-[11px] text-neutral-500">
+                    Submitted:{" "}
+                    {new Date(order.dealerNotifiedOrmsbyOfUpdatesAt).toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </p>
+                )}
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleApproveDealerRevision()}
+                    disabled={approvingRevision || order.dealerPendingAdminProposedChanges}
+                    className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:opacity-50"
+                  >
+                    {approvingRevision ? "Approving…" : "Approve revision (no dealer confirm)"}
+                  </button>
+                  {order.status !== "DRAFT" && !order.dealerPendingAdminProposedChanges && (
+                    <>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-amber-100/80">
+                        Note to dealer (optional)
+                        <textarea
+                          value={adminProposeNote}
+                          onChange={(e) => setAdminProposeNote(e.target.value)}
+                          rows={3}
+                          placeholder="e.g. Reduced qty on Hype 7 due to batch limits…"
+                          className="mt-1 w-full rounded-lg border border-amber-500/25 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-amber-400/50"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitProposedChangesToDealer()}
+                        disabled={submittingProposedChanges}
+                        className="w-full rounded-lg border border-violet-400/40 bg-violet-600/80 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
+                      >
+                        {submittingProposedChanges
+                          ? "Sending…"
+                          : "Submit proposed changes to dealer"}
+                      </button>
+                      <p className="text-[10px] text-neutral-500">
+                        Clears “revision pending” and emails the dealer to accept or request changes
+                        (if notifications are on).
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!order.pendingOrmsbyRevisionReview &&
+              order.status !== "DRAFT" &&
+              !order.dealerPendingAdminProposedChanges && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                  <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                    Propose updates to dealer
+                  </h2>
+                  <p className="mb-3 text-xs text-neutral-500">
+                    After editing line qty/prices above, send the order to the dealer for
+                    confirmation (e.g. repricing without a pending revision).
+                  </p>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                    Note to dealer (optional)
+                    <textarea
+                      value={adminProposeNote}
+                      onChange={(e) => setAdminProposeNote(e.target.value)}
+                      rows={3}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitProposedChangesToDealer()}
+                    disabled={submittingProposedChanges}
+                    className="mt-3 w-full rounded-lg bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
+                  >
+                    {submittingProposedChanges
+                      ? "Sending…"
+                      : "Submit proposed changes to dealer"}
+                  </button>
+                </div>
+              )}
+
+            {order.dealerPendingAdminProposedChanges && (
+              <div className="rounded-2xl border border-violet-500/35 bg-violet-500/10 p-6">
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-violet-200/90">
+                  Awaiting dealer
+                </h2>
+                <p className="text-xs text-neutral-400">
+                  The dealer must open the order and accept your updates or request changes. You’ll
+                  get an email when they respond (if enabled in settings).
+                </p>
+                {order.adminProposedChangesAt && (
+                  <p className="mt-3 text-[11px] text-neutral-500">
+                    Sent:{" "}
+                    {new Date(order.adminProposedChangesAt).toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </p>
+                )}
+                {order.adminProposedChangesNote && (
+                  <p className="mt-2 text-xs text-neutral-300">
+                    <span className="font-medium text-violet-200/90">Your note:</span>{" "}
+                    {order.adminProposedChangesNote}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Invoice Upload */}
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">

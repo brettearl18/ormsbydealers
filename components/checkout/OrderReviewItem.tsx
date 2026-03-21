@@ -1,7 +1,8 @@
 "use client";
 
 import { CartItem } from "@/lib/cart-context";
-import { GuitarDoc, GuitarOption } from "@/lib/types";
+import { resolveLineOptionLabels } from "@/lib/order-line-options";
+import { GuitarDoc } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useEffect, useState } from "react";
@@ -39,21 +40,6 @@ export function OrderReviewItem({ item, index }: Props) {
     );
   }
 
-  // Get option labels for selected values
-  const getOptionLabel = (optionId: string, valueId: string): string => {
-    if (!guitar?.options) return valueId;
-    const option = guitar.options.find((opt) => opt.optionId === optionId);
-    if (!option) return valueId;
-    const value = option.values.find((val) => val.valueId === valueId);
-    return value?.label || valueId;
-  };
-
-  const getOptionName = (optionId: string): string => {
-    if (!guitar?.options) return optionId;
-    const option = guitar.options.find((opt) => opt.optionId === optionId);
-    return option?.label || optionId;
-  };
-
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-4">
       <div className="flex gap-4">
@@ -79,37 +65,51 @@ export function OrderReviewItem({ item, index }: Props) {
           {/* Selected Options */}
           {item.selectedOptions &&
             Object.keys(item.selectedOptions).length > 0 && (
-              <div className="space-y-1.5 rounded-lg border border-white/5 bg-black/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-500">
                   Configuration
                 </p>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-x-6 sm:gap-y-3">
                   {Object.entries(item.selectedOptions)
                     .sort(([optionIdA], [optionIdB]) => {
-                      // Prioritize Colour/Color first
-                      const isColorA = optionIdA.toLowerCase().includes("color") || optionIdA.toLowerCase().includes("colour");
-                      const isColorB = optionIdB.toLowerCase().includes("color") || optionIdB.toLowerCase().includes("colour");
+                      const isColorA =
+                        optionIdA.toLowerCase().includes("color") ||
+                        optionIdA.toLowerCase().includes("colour");
+                      const isColorB =
+                        optionIdB.toLowerCase().includes("color") ||
+                        optionIdB.toLowerCase().includes("colour");
                       if (isColorA && !isColorB) return -1;
                       if (!isColorA && isColorB) return 1;
-                      // Then sort alphabetically by option name
-                      const nameA = getOptionName(optionIdA).toLowerCase();
-                      const nameB = getOptionName(optionIdB).toLowerCase();
-                      return nameA.localeCompare(nameB);
+                      const { optionLabel: nameA } = resolveLineOptionLabels(
+                        guitar ?? undefined,
+                        optionIdA,
+                        item.selectedOptions![optionIdA],
+                      );
+                      const { optionLabel: nameB } = resolveLineOptionLabels(
+                        guitar ?? undefined,
+                        optionIdB,
+                        item.selectedOptions![optionIdB],
+                      );
+                      return nameA.toLowerCase().localeCompare(nameB.toLowerCase());
                     })
-                    .map(([optionId, valueId]) => (
-                      <div
-                        key={optionId}
-                        className="flex items-center gap-2 text-xs"
-                      >
-                        <span className="text-neutral-400">
-                          {getOptionName(optionId)}:
-                        </span>
-                        <span className="font-medium text-white">
-                          {getOptionLabel(optionId, valueId)}
-                        </span>
-                      </div>
-                    ))}
-                </div>
+                    .map(([optionId, valueId]) => {
+                      const { optionLabel, valueLabel } = resolveLineOptionLabels(
+                        guitar ?? undefined,
+                        optionId,
+                        valueId,
+                      );
+                      return (
+                        <div key={optionId} className="min-w-0">
+                          <dt className="text-sm font-medium text-neutral-300">
+                            {optionLabel}
+                          </dt>
+                          <dd className="mt-1 text-base font-semibold leading-snug text-white">
+                            {valueLabel}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                </dl>
               </div>
             )}
 

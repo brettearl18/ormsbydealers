@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
 import { useEffect, useState } from "react";
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -15,6 +16,7 @@ import { fetchDealerGuitars, type DealerGuitar } from "@/lib/dealer-guitars";
 import Link from "next/link";
 import type { FxRatesDoc } from "@/lib/types";
 import { fetchDealerFxRates } from "@/lib/fx-client";
+import { resolveDisplayCurrency } from "@/lib/display-currency";
 import {
   ShoppingBagIcon,
   DocumentTextIcon,
@@ -24,6 +26,8 @@ import {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
+  const effectiveAccountId = useEffectiveAccountId();
+  const { isAdminDealerPreview } = useDealerView();
   const router = useRouter();
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
   const [guitars, setGuitars] = useState<DealerGuitar[]>([]);
@@ -48,14 +52,22 @@ export default function DashboardPage() {
       const t = setTimeout(() => router.push("/login"), 200);
       return () => clearTimeout(t);
     }
-    if (!user.accountId || !user.tierId || !user.currency) {
+    if (user.role === "ADMIN" && !isAdminDealerPreview) {
+      const t = setTimeout(() => router.push("/admin/accounts"), 200);
+      return () => clearTimeout(t);
+    }
+    if (user.role !== "ADMIN" && (!user.accountId || !user.tierId)) {
       router.push("/dealer");
+      return;
+    }
+    if (!effectiveAccountId) {
+      setFetching(false);
       return;
     }
 
     async function fetchDashboardData() {
-      if (!user?.accountId) return;
-      
+      if (!effectiveAccountId) return;
+
       setFetching(true);
       setError(null);
       try {
@@ -63,7 +75,7 @@ export default function DashboardPage() {
         const ordersRef = collection(db, "orders");
         const ordersQuery = query(
           ordersRef,
-          where("accountId", "==", user.accountId),
+          where("accountId", "==", effectiveAccountId),
           orderBy("createdAt", "desc"),
           limit(10),
         );
@@ -86,17 +98,21 @@ export default function DashboardPage() {
 
         // Fetch account info
         const accountSnap = await getDoc(
-          doc(db, "accounts", user.accountId),
+          doc(db, "accounts", effectiveAccountId),
         );
         if (accountSnap.exists()) {
           setAccount(accountSnap.data() as AccountDoc);
         }
 
         // Fetch featured guitars (first 6)
+        const acc = accountSnap.exists()
+          ? (accountSnap.data() as AccountDoc)
+          : null;
+        const tierForCatalog = acc?.tierId ?? user?.tierId ?? "TIER_A";
         const guitarsData = await fetchDealerGuitars({
-          accountId: user.accountId!,
-          tierId: user.tierId ?? undefined,
-          currency: user.currency ?? undefined,
+          accountId: effectiveAccountId,
+          tierId: tierForCatalog,
+          currency: resolveDisplayCurrency(acc, user),
         });
         setGuitars(guitarsData.slice(0, 6));
       } catch (err) {
@@ -108,7 +124,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData();
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, effectiveAccountId, isAdminDealerPreview]);
 
   if (authLoading || fetching) {
     return (
@@ -121,6 +137,8 @@ export default function DashboardPage() {
   if (!user) {
     return null;
   }
+
+  const displayCurrency = resolveDisplayCurrency(account, user);
 
   // Calculate stats
   const totalOrders = orders.length;
@@ -156,6 +174,7 @@ export default function DashboardPage() {
 
       <AccountInfoCard
         user={user}
+        currency={account?.currency}
         accountName={account?.name}
         territory={account?.territory}
         discountPercent={account?.discountPercent ?? null}
@@ -195,7 +214,7 @@ export default function DashboardPage() {
       {/* Quick actions + orders + preview — equal visual weight, aligned to top */}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-5">
         <div className="lg:col-span-3">
-          <QuickActionsCard />
+          <QuickActionsCard hideCartAndCheckout={isAdminDealerPreview} />
         </div>
 
         <div className="lg:col-span-5">
@@ -213,7 +232,7 @@ export default function DashboardPage() {
             </div>
             <RecentOrdersList
               orders={orders}
-              currency={user.currency!}
+              currency={displayCurrency}
               isLoading={fetching}
               accountName={account?.name}
             />
@@ -237,9 +256,7 @@ export default function DashboardPage() {
               <div className="flex flex-col gap-2">
                 {guitars.slice(0, 3).map((g) => {
                   const rate =
-                    user.currency &&
-                    user.currency !== "AUD" &&
-                    fxRates?.rates[user.currency];
+                    displayCurrency !== "AUD" && fxRates?.rates[displayCurrency];
                   const displayValue =
                     g.price.value != null && rate
                       ? g.price.value * rate
@@ -265,7 +282,7 @@ export default function DashboardPage() {
                         <p className="truncate text-[11px] text-neutral-500">{g.sku}</p>
                         {displayValue != null && (
                           <p className="mt-0.5 text-xs font-semibold text-accent">
-                            {formatMoney(displayValue, user.currency!)}
+                            {formatMoney(displayValue, displayCurrency)}
                           </p>
                         )}
                       </div>
@@ -298,9 +315,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {guitars.slice(0, 6).map((g) => {
               const rate =
-                user.currency &&
-                user.currency !== "AUD" &&
-                fxRates?.rates[user.currency];
+                displayCurrency !== "AUD" && fxRates?.rates[displayCurrency];
               const displayValue =
                 g.price.value != null && rate
                   ? g.price.value * rate
@@ -318,14 +333,14 @@ export default function DashboardPage() {
                   availability={g.availability}
                   price={{
                     value: displayValue,
-                    currency: user.currency!,
+                    currency: displayCurrency,
                     note:
                       g.price.source === "PROMO"
                         ? "Promo price"
                         : g.price.source === "ACCOUNT_OVERRIDE"
                         ? "Account-specific price"
                         : g.price.source === "TIER"
-                        ? `Tier ${user.tierId} price`
+                        ? `Tier ${account?.tierId ?? user.tierId ?? "—"} price`
                         : null,
                   }}
                   rrp={displayRrp}

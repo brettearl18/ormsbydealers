@@ -183,6 +183,23 @@ export interface OrderDoc {
   invoiceUrl?: string;
   invoiceUploadedAt?: string;
   etaDate?: string;
+  /** Set when dealer resubmits a completed order back to Ormsby for review. */
+  resubmittedAt?: string;
+  /** Status before resubmit (e.g. COMPLETED) for audit. */
+  resubmittedFromStatus?: OrderStatus;
+  /** Dealer tapped “submit updated order” after adding lines (so Ormsby can re-review). */
+  dealerNotifiedOrmsbyOfUpdatesAt?: string;
+  /** True after dealer submits updated order; cleared when admin approves the revision. */
+  pendingOrmsbyRevisionReview?: boolean;
+  /** When staff cleared pending revision review. */
+  revisionReviewedAt?: string;
+  /** Admin adjusted the order; dealer must accept or request changes. */
+  dealerPendingAdminProposedChanges?: boolean;
+  adminProposedChangesAt?: string;
+  adminProposedChangesNote?: string | null;
+  dealerAcceptedAdminChangesAt?: string;
+  dealerRejectedAdminProposedAt?: string;
+  dealerRejectedAdminProposedNote?: string | null;
 }
 
 export interface OrderLineDoc {
@@ -193,6 +210,15 @@ export interface OrderLineDoc {
   unitPrice: number;
   lineTotal: number;
   selectedOptions?: Record<string, string>;
+  /**
+   * Line added after checkout / initial submission — dealer “Add to order” or
+   * Ormsby-approved add request. Drives NEW styling on the order detail.
+   */
+  isNewOnOrder?: boolean;
+  /**
+   * Legacy: set on approved add requests only. Prefer `isNewOnOrder`; UI treats either as new.
+   */
+  addedViaOrmsbyApproval?: boolean;
 }
 
 export type OrderChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -250,6 +276,12 @@ export interface AdminNotificationSettings {
   orderStatusChangedEmail: boolean;
   accountRequestEmail: boolean;
   dailySummaryEmail: boolean;
+  /** Email support address when a dealer submits an order revision for review. */
+  orderDealerRevisionSubmittedEmail?: boolean;
+  /** Email dealer when Ormsby submits proposed line/pricing changes for confirmation. */
+  orderAdminProposedChangesEmail?: boolean;
+  /** Email support when dealer accepts or rejects proposed changes. */
+  orderDealerProposalResponseEmail?: boolean;
 }
 
 export interface AdminEmailTemplateSettings {

@@ -20,6 +20,7 @@ export interface SessionUser {
   accountId: string | null;
   tierId: string | null;
   currency: string | null;
+  mustChangePassword: boolean;
 }
 
 interface AuthContextValue {
@@ -38,6 +39,7 @@ async function sessionUserFromFirebaseUser(firebaseUser: AppUser): Promise<Sessi
   const accountId = (token.claims.accountId as string | undefined) ?? null;
   const tierId = (token.claims.tierId as string | undefined) ?? null;
   const currency = (token.claims.currency as string | undefined) ?? null;
+  const mustChangePassword = Boolean(token.claims.mustChangePassword);
   return {
     uid: firebaseUser.uid,
     email: firebaseUser.email,
@@ -45,6 +47,7 @@ async function sessionUserFromFirebaseUser(firebaseUser: AppUser): Promise<Sessi
     accountId: accountId ?? null,
     tierId: tierId ?? null,
     currency: currency ?? null,
+    mustChangePassword,
   };
 }
 

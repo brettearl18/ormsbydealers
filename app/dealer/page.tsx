@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
@@ -13,9 +14,12 @@ import { GuitarCardSkeleton } from "@/components/LoadingSkeleton";
 import { QuickViewModal } from "@/components/guitars/QuickViewModal";
 import type { FxRatesDoc } from "@/lib/types";
 import { fetchDealerFxRates } from "@/lib/fx-client";
+import { resolveDisplayCurrency } from "@/lib/display-currency";
 
 export default function DealerDashboard() {
   const { user, loading } = useAuth();
+  const effectiveAccountId = useEffectiveAccountId();
+  const { isAdminDealerPreview } = useDealerView();
   const router = useRouter();
   const [guitars, setGuitars] = useState<DealerGuitar[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -39,11 +43,11 @@ export default function DealerDashboard() {
 
   // Load account doc so we have saved currency (and tier when claims missing)
   useEffect(() => {
-    if (!user?.accountId) {
+    if (!effectiveAccountId) {
       setAccountResolved(null);
       return;
     }
-    const accountId = user.accountId;
+    const accountId = effectiveAccountId;
     let cancelled = false;
     (async () => {
       try {
@@ -71,7 +75,7 @@ export default function DealerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.accountId, user?.tierId, user?.currency]);
+  }, [effectiveAccountId, user?.tierId, user?.currency]);
 
   // Live FX (Frankfurter via /api/fx/latest), Firestore fallback
   useEffect(() => {
@@ -86,7 +90,11 @@ export default function DealerDashboard() {
 
   // Use defaults when pricing not set so dealers can access without tier/currency configured
   const effectiveTierId = user?.tierId ?? accountResolved?.tierId ?? "TIER_A";
-  const effectiveCurrency = user?.currency ?? accountResolved?.currency ?? "AUD";
+  /** Account doc (Settings) overrides JWT claims for currency */
+  const effectiveCurrency = resolveDisplayCurrency(
+    accountResolved ? { currency: accountResolved.currency } : null,
+    user,
+  );
 
   // Default display currency to saved account preference whenever it loads/updates
   useEffect(() => {
@@ -94,7 +102,7 @@ export default function DealerDashboard() {
   }, [effectiveCurrency]);
 
   useEffect(() => {
-    const accountId = user?.accountId;
+    const accountId = effectiveAccountId;
     if (!accountId) return;
     let cancelled = false;
     async function run() {
@@ -117,7 +125,7 @@ export default function DealerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.accountId, effectiveTierId, effectiveCurrency]);
+  }, [effectiveAccountId, effectiveTierId, effectiveCurrency]);
 
   useEffect(() => {
     if (loading || user) return;
@@ -139,7 +147,17 @@ export default function DealerDashboard() {
     return null;
   }
 
-  if (!user.accountId) {
+  if (user.role === "ADMIN" && !isAdminDealerPreview) {
+    return (
+      <main className="flex flex-1 items-center justify-center px-6">
+        <p className="max-w-md text-center text-sm text-neutral-400">
+          Use <strong className="text-neutral-300">View as dealer</strong> on an account in Admin → Accounts to preview the catalog as that dealer.
+        </p>
+      </main>
+    );
+  }
+
+  if (!effectiveAccountId) {
     return (
       <main className="flex flex-1 items-center justify-center">
         <p className="max-w-sm text-center text-sm text-neutral-400">
@@ -242,12 +260,14 @@ export default function DealerDashboard() {
               </select>
             </div>
           </div>
-          <Link
-            href="/cart"
-            className="rounded-full border border-neutral-800 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide transition hover:border-accent hover:text-accent-soft"
-          >
-            View cart
-          </Link>
+          {!isAdminDealerPreview && (
+            <Link
+              href="/cart"
+              className="rounded-full border border-neutral-800 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide transition hover:border-accent hover:text-accent-soft"
+            >
+              View cart
+            </Link>
+          )}
         </div>
 
         {error && (
