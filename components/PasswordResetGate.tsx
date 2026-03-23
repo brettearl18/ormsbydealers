@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import type { ReactNode } from "react";
 
-const ALLOWED_WHEN_PENDING = new Set(["/update-password"]);
+const ALLOWED_WHEN_PENDING = new Set(["/update-password", "/claim-account"]);
 
 export function PasswordResetGate({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();

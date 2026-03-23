@@ -9,6 +9,39 @@ const db = admin.firestore();
 /** Base URL for dealer portal (used in email links). */
 const PORTAL_BASE_URL = "https://ormsbydealers.vercel.app";
 
+/** Where password-reset / invite links should return (branded set-password page). */
+function claimAccountContinueUrl(): string {
+  return `${PORTAL_BASE_URL}/claim-account`;
+}
+
+/**
+ * Initial Auth password until the dealer uses the email setup link (or changes it).
+ * Not included in the welcome email — support can share if the link fails. Same for all new dealers.
+ */
+const DEALER_INITIAL_PASSWORD = "OrmsbyDealer2026";
+
+/** Welcome email for new dealers. Supports {{email}}, {{claimLink}}, {{loginUrl}}; legacy {{password}} is replaced with a note. */
+function fillDealerWelcomeEmailBody(
+  template: string | undefined,
+  params: { email: string; claimLink: string; loginUrl: string },
+): string {
+  const defaultBody =
+    `Your Ormsby dealer portal account is ready.\n\n` +
+    `Click once to choose your password:\n{{claimLink}}\n\n` +
+    `Your login email: {{email}}\n` +
+    `After that, sign in at:\n{{loginUrl}}\n\n` +
+    `If the link expires, ask Ormsby to resend your welcome email.\n`;
+  const body = (template?.trim() ? template : defaultBody)
+    .replace(/\{\{email\}\}/g, params.email)
+    .replace(/\{\{claimLink\}\}/g, params.claimLink)
+    .replace(/\{\{loginUrl\}\}/g, params.loginUrl)
+    .replace(
+      /\{\{password\}\}/g,
+      "(use the setup link to choose your password — no temporary password is sent by email)",
+    );
+  return body;
+}
+
 /** Get dealer email for an order: prefer user doc, else account contactEmail. */
 async function getDealerEmailForOrder(accountId: string, createdByUid: string): Promise<string | null> {
   const userSnap = await db.collection("users").doc(createdByUid).get();
@@ -397,7 +430,7 @@ export const requestPasswordReset = functions.https.onCall(
       let link: string;
       try {
         link = await auth.generatePasswordResetLink(email, {
-          url: `${PORTAL_BASE_URL}/login`,
+          url: claimAccountContinueUrl(),
         });
       } catch (err: any) {
         if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
@@ -483,9 +516,9 @@ interface CreateDealerAuthUserRequest {
 }
 
 /**
- * Creates (or updates) a Firebase Auth user for a dealer/distributor with
- * temporary password = companyName + "123!@#", sets custom claims, writes
- * users/{uid}, and optionally sends login-details email.
+ * Creates (or updates) a Firebase Auth user for a dealer/distributor with a
+ * random bootstrap password (not emailed). Sends a one-click password-setup link
+ * so the dealer chooses their password on /claim-account. Custom claims + users/{uid}.
  * Admin only.
  */
 export const createDealerAuthUser = functions.https.onCall(
@@ -527,19 +560,19 @@ export const createDealerAuthUser = functions.https.onCall(
       const tierId = accountData.tierId || "TIER_A";
       const currency = accountData.currency || "AUD";
 
-      const tempPassword = companyName.trim() + "123!@#";
+      const bootstrapPassword = DEALER_INITIAL_PASSWORD;
       const auth = admin.auth();
       let user: admin.auth.UserRecord;
 
       try {
         user = await auth.getUserByEmail(email);
-        await auth.updateUser(user.uid, { password: tempPassword });
+        await auth.updateUser(user.uid, { password: bootstrapPassword });
       } catch (err: any) {
         if (err.code === "auth/user-not-found") {
           user = await auth.createUser({
             email,
             emailVerified: false,
-            password: tempPassword,
+            password: bootstrapPassword,
             displayName: contactName || companyName.trim(),
           });
         } else {
@@ -552,7 +585,8 @@ export const createDealerAuthUser = functions.https.onCall(
         accountId,
         tierId,
         currency,
-        mustChangePassword: true,
+        /** False: dealer sets password via email link; no second forced change. */
+        mustChangePassword: false,
       };
       await auth.setCustomUserClaims(user.uid, claims);
 
@@ -581,15 +615,17 @@ export const createDealerAuthUser = functions.https.onCall(
             const settingsData = (settingsSnap.exists ? settingsSnap.data() : null) as {
               emailTemplates?: { welcomeSubject?: string; welcomeBody?: string };
             } | null;
+            const claimLink = await auth.generatePasswordResetLink(email, {
+              url: claimAccountContinueUrl(),
+            });
+            const loginUrl = `${PORTAL_BASE_URL}/login`;
             const welcomeSubject =
-              settingsData?.emailTemplates?.welcomeSubject || "Your Ormsby Dealer Portal login";
-            let body =
-              settingsData?.emailTemplates?.welcomeBody ||
-              "Your dealer portal account is ready.\n\nLogin URL: {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{password}}\n\nPlease change your password after first login if the portal allows it.";
-            body = body
-              .replace(/\{\{email\}\}/g, email)
-              .replace(/\{\{password\}\}/g, tempPassword)
-              .replace(/\{\{loginUrl\}\}/g, `${PORTAL_BASE_URL}/login`);
+              settingsData?.emailTemplates?.welcomeSubject || "Set up your Ormsby dealer portal";
+            const body = fillDealerWelcomeEmailBody(settingsData?.emailTemplates?.welcomeBody, {
+              email,
+              claimLink,
+              loginUrl,
+            });
             await sendEmail({
               to: email,
               subject: welcomeSubject,
@@ -623,7 +659,7 @@ interface ResendDealerLoginEmailRequest {
 }
 
 /**
- * Resends the dealer login/welcome email (new temp password + same template).
+ * Resends the dealer welcome email (new bootstrap password + fresh setup link).
  * Admin only. Use when the first email didn't come through.
  */
 export const resendDealerLoginEmail = functions.https.onCall(
@@ -664,7 +700,6 @@ export const resendDealerLoginEmail = functions.https.onCall(
         tierId?: string;
         currency?: string;
       };
-      const companyName = accountData.name?.trim() || accountId;
       const email =
         (typeof data?.email === "string" ? data.email.trim() : null) ||
         accountData.contactEmail?.trim() ||
@@ -690,12 +725,12 @@ export const resendDealerLoginEmail = functions.https.onCall(
         throw err;
       }
 
-      const tempPassword = companyName + "123!@#";
-      await auth.updateUser(user.uid, { password: tempPassword });
+      const bootstrapPassword = DEALER_INITIAL_PASSWORD;
+      await auth.updateUser(user.uid, { password: bootstrapPassword });
       const existingClaims = user.customClaims || {};
       await auth.setCustomUserClaims(user.uid, {
         ...existingClaims,
-        mustChangePassword: true,
+        mustChangePassword: false,
       });
 
       let emailSent = false;
@@ -709,16 +744,18 @@ export const resendDealerLoginEmail = functions.https.onCall(
           const settingsData = (settingsSnap.exists ? settingsSnap.data() : null) as {
             emailTemplates?: { welcomeSubject?: string; welcomeBody?: string };
           } | null;
+          const claimLink = await auth.generatePasswordResetLink(email, {
+            url: claimAccountContinueUrl(),
+          });
+          const loginUrl = `${PORTAL_BASE_URL}/login`;
           const welcomeSubject =
             settingsData?.emailTemplates?.welcomeSubject ||
-            "Your Ormsby Dealer Portal login";
-          let body =
-            settingsData?.emailTemplates?.welcomeBody ||
-            "Your dealer portal account is ready.\n\nLogin URL: {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{password}}\n\nPlease change your password after first login if the portal allows it.";
-          body = body
-            .replace(/\{\{email\}\}/g, email)
-            .replace(/\{\{password\}\}/g, tempPassword)
-            .replace(/\{\{loginUrl\}\}/g, `${PORTAL_BASE_URL}/login`);
+            "Set up your Ormsby dealer portal";
+          const body = fillDealerWelcomeEmailBody(settingsData?.emailTemplates?.welcomeBody, {
+            email,
+            claimLink,
+            loginUrl,
+          });
           await sendEmail({
             to: email,
             subject: welcomeSubject,

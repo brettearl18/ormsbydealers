@@ -1,0 +1,40 @@
+# Dealer account claim (easy setup)
+
+## What dealers do
+
+1. Ormsby creates their Auth user and sends the **welcome email** (from Admin → Accounts, or the `createDealerAuthUser` Cloud Function).
+2. The email contains a **single setup link** (Firebase password reset) — the temporary password is **not** in the email (it is a fixed internal default: `OrmsbyDealer2026` — support can give this only if the link fails; dealers should use the link first).
+3. The link opens **`/claim-account`** on the portal (after Firebase validates the action, when configured — see below).
+4. They enter a **new password** twice → they are **signed in** and sent to the dashboard.
+
+## What Ormsby does
+
+- **Preferred:** Admin → Accounts → create dealer auth user / **Resend welcome email** (with Mailgun or SMTP configured in Settings).
+- **Bulk script:** `npm run provision:dealers -- --apply` sets the same initial password as Cloud Functions (`OrmsbyDealer2026`, overridable with env `DEALER_INITIAL_PASSWORD`). Then use **Resend welcome email** per account so each dealer gets a setup link.
+
+## Custom welcome copy
+
+Admin → Settings → Email templates → **Welcome / dealer setup body**
+
+Placeholders:
+
+- `{{claimLink}}` — one-click password setup (required for the easy flow)
+- `{{loginUrl}}` — normal sign-in page after setup
+- `{{email}}` — dealer email  
+- `{{password}}` — legacy; replaced with a short note if still in your template
+
+## Firebase Console (recommended)
+
+For the smoothest experience, point password-reset handling at your site:
+
+1. Firebase Console → **Authentication** → **Templates** → **Password reset**.
+2. Set the **action URL** (or custom domain / continue URL, per your Firebase project UI) to your production claim page, e.g.  
+   `https://ormsbydealers.vercel.app/claim-account`
+3. Under **Authentication** → **Settings** → **Authorized domains**, ensure your Vercel domain (and `localhost` for dev) are listed.
+
+If the email link still opens Firebase’s default page first, dealers can still complete reset there; they may land on your **continue URL** afterward. The in-app **`/claim-account`** page is used when the link passes an `oobCode` query (typical when the action URL targets your app).
+
+## Related
+
+- **Forgot password** (login page) uses the same reset flow and continues to `/claim-account`.
+- Legacy users with **`mustChangePassword: true`** still use **`/update-password`** after signing in with an old temporary password.

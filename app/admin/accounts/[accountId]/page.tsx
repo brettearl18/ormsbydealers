@@ -880,12 +880,12 @@ export default function AccountDetailPage({
                       const data = res.data as { emailSent: boolean };
                       setResendEmailMessage(
                         data.emailSent
-                          ? "Login email sent successfully."
+                          ? "Welcome email sent — dealer should use the setup link inside to choose a password."
                           : "Sending failed (check Mailgun/SMTP settings).",
                       );
                     } catch (err: any) {
                       setResendEmailMessage(
-                        err?.message || "Failed to resend login email.",
+                        err?.message || "Failed to resend welcome email.",
                       );
                     } finally {
                       setResendEmailLoading(false);
@@ -894,12 +894,12 @@ export default function AccountDetailPage({
                   className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <EnvelopeIcon className="mr-2 inline h-4 w-4" />
-                  {resendEmailLoading ? "Sending…" : "Resend login email"}
+                  {resendEmailLoading ? "Sending…" : "Resend welcome / setup email"}
                 </button>
                 {resendEmailMessage && (
                   <p
                     className={
-                      resendEmailMessage.startsWith("Login email sent")
+                      resendEmailMessage.startsWith("Welcome email sent")
                         ? "text-sm text-green-400"
                         : "text-sm text-amber-400"
                     }
@@ -909,7 +909,7 @@ export default function AccountDetailPage({
                 )}
                 {!(account as AccountDoc).contactEmail?.trim() && (
                   <p className="text-xs text-neutral-500">
-                    Set contact email on the account to resend login email.
+                    Set contact email on the account to resend the welcome email with setup link.
                   </p>
                 )}
                 <button className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10">

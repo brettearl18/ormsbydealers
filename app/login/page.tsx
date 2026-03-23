@@ -137,6 +137,10 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-neutral-400">
             Sign in with your Ormsby Guitars account
           </p>
+          <p className="mt-3 text-xs text-neutral-500">
+            New dealer? Use the <span className="text-neutral-400">setup link</span> in your welcome
+            email to choose a password first — you won&apos;t receive a temporary password by email.
+          </p>
         </div>
 
         {/* Login Form Card */}

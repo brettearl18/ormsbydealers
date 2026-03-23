@@ -54,6 +54,7 @@ export default function AdminDashboard() {
   const [recentRequests, setRecentRequests] = useState<Array<AccountRequestDoc & { id: string }>>([]);
   const [orderNotifications, setOrderNotifications] = useState<OrderActivityItem[]>([]);
   const [unreadOrderCount, setUnreadOrderCount] = useState(0);
+  const [orderFeedEligibleCount, setOrderFeedEligibleCount] = useState(0);
   const [inventory, setInventory] = useState<
     Array<{
       id: string;
@@ -115,6 +116,9 @@ export default function AdminDashboard() {
         ];
 
         for (const order of orders) {
+          if (order.status === "CANCELLED") {
+            continue;
+          }
           const linesRef = collection(db, "orders", order.id, "lines");
           const linesSnap = await getDocs(linesRef);
           const lines = linesSnap.docs.map((doc) => doc.data() as OrderLineDoc);
@@ -156,14 +160,14 @@ export default function AdminDashboard() {
         });
 
         const lastSeen = readAdminOrdersLastSeenMs();
-        const { items: activityItems, unreadCount } = buildOrderActivity(
-          orders,
-          accountNames,
-          lastSeen,
-          15,
-        );
+        const {
+          items: activityItems,
+          unreadCount,
+          eligibleFeedOrderCount,
+        } = buildOrderActivity(orders, accountNames, lastSeen, 15);
         setOrderNotifications(activityItems);
         setUnreadOrderCount(unreadCount);
+        setOrderFeedEligibleCount(eligibleFeedOrderCount);
 
         // Fetch pending account requests
         const requestsRef = collection(db, "accountRequests");
@@ -213,7 +217,7 @@ export default function AdminDashboard() {
 
   function markAllOrderNotificationsRead() {
     writeAdminOrdersLastSeenAsAllReadNow();
-    setOrderNotifications((prev) => prev.map((row) => ({ ...row, isUnread: false })));
+    setOrderNotifications([]);
     setUnreadOrderCount(0);
   }
 
@@ -297,9 +301,14 @@ export default function AdminDashboard() {
                 Order notifications
               </h2>
               <p className="mt-1 max-w-xl text-sm text-neutral-400">
-                Submitted and draft orders (plus any that need revision review). Approved and
-                in‑pipeline orders are hidden here unless a dealer revision or confirmation is still
-                open. Unread = updated since you last marked read. Refreshes every 45 seconds.
+                Only <span className="text-neutral-300">unread</span> updates appear here (submitted,
+                draft, cancelled, or needing revision). Approved / in‑pipeline orders stay in{" "}
+                <Link href="/admin/orders" className="text-accent-soft underline hover:text-accent">
+                  Orders
+                </Link>{" "}
+                unless a dealer revision or confirmation is open.{" "}
+                <span className="text-neutral-300">Mark all as read</span> clears this list until an
+                order changes again. Refreshes every 45 seconds.
               </p>
             </div>
           </div>
@@ -316,7 +325,8 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={markAllOrderNotificationsRead}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:border-white/25 hover:bg-white/10"
+              disabled={unreadOrderCount === 0}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:border-white/25 hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
             >
               Mark all as read
             </button>
@@ -332,17 +342,26 @@ export default function AdminDashboard() {
         <ul className="mt-5 space-y-2" aria-label="Recent order activity">
           {orderNotifications.length === 0 ? (
             <li className="rounded-2xl border border-white/5 bg-black/20 px-4 py-6 text-center text-sm text-neutral-500">
-              {stats.totalOrders > 0 ? (
+              {stats.totalOrders === 0 ? (
+                "No orders in the system yet."
+              ) : orderFeedEligibleCount === 0 ? (
                 <>
-                  Nothing in this feed right now — approved / in‑production / shipped / completed
-                  orders stay in{" "}
+                  No submitted/draft orders in this feed — approved / in‑production / shipped /
+                  completed orders are in{" "}
                   <Link href="/admin/orders" className="text-accent-soft underline hover:text-accent">
                     View all orders
                   </Link>
-                  . They reappear here if a dealer revision or confirmation is pending.
+                  . They appear here again if a dealer revision or confirmation is pending.
                 </>
               ) : (
-                "No orders in the system yet."
+                <>
+                  No unread order updates. You&apos;re caught up — new or changed orders will show
+                  here after the next save. Open{" "}
+                  <Link href="/admin/orders" className="text-accent-soft underline hover:text-accent">
+                    View all orders
+                  </Link>{" "}
+                  anytime.
+                </>
               )}
             </li>
           ) : (
@@ -543,7 +562,12 @@ export default function AdminDashboard() {
           Inventory Overview
         </h2>
         <p className="mb-4 text-sm text-neutral-400">
-          Tally of guitars ordered across all dealer purchase orders.
+          Per model: <span className="text-neutral-300">Total ordered</span> is the sum of line
+          quantities on all non‑cancelled orders (includes drafts).{" "}
+          <span className="text-neutral-300">Pending</span> is units on orders in{" "}
+          <span className="text-neutral-300">Submitted, Approved, or In production</span> — i.e.
+          still in the pipeline before shipped/completed. These are{" "}
+          <span className="text-neutral-300">guitar counts</span>, not order counts.
         </p>
         <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/40">
           <table className="w-full text-sm">
@@ -559,7 +583,7 @@ export default function AdminDashboard() {
               {inventory.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={4}
                     className="px-4 py-6 text-center text-xs text-neutral-400"
                   >
                     No inventory data available yet.

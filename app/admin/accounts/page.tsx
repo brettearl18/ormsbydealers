@@ -347,8 +347,8 @@ function ManageAccountsContent() {
         await fetchData();
         alert(
           data.emailSent
-            ? `Account created. Login details have been emailed to ${email}.`
-            : `Account created. Login details could not be emailed; temp password: ${name.trim()}123!@#`,
+            ? `Account created. A welcome email with a password setup link was sent to ${email}.`
+            : `Account created. Welcome email could not be sent (check Mailgun/SMTP). Use “Resend setup email” on this account, or support password OrmsbyDealer2026 until they use the link.`,
         );
         setCreateSubmitting(false);
         return;
@@ -393,11 +393,11 @@ function ManageAccountsContent() {
       const data = res.data as { emailSent: boolean };
       alert(
         data.emailSent
-          ? "Login email sent successfully."
+          ? "Welcome email sent — dealer should open the setup link in that email to choose a password."
           : "Email could not be sent (check Mailgun/SMTP settings).",
       );
     } catch (err: any) {
-      alert(err?.message || "Failed to resend login email.");
+      alert(err?.message || "Failed to resend welcome email.");
     } finally {
       setResendEmailAccountId(null);
     }
@@ -828,7 +828,7 @@ function ManageAccountsContent() {
                           }
                           title={
                             (account as AccountWithUsers).contactEmail?.trim()
-                              ? "Resend login details to contact email"
+                              ? "Resend welcome email with password setup link to contact email"
                               : "Set contact email on account first"
                           }
                           className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -836,7 +836,7 @@ function ManageAccountsContent() {
                           <EnvelopeIcon className="h-4 w-4" />
                           {resendEmailAccountId === account.id
                             ? "Sending…"
-                            : "Resend login email"}
+                            : "Resend setup email"}
                         </button>
                         <Link
                           href={`/admin/accounts/${account.id}`}

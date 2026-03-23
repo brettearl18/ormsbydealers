@@ -406,9 +406,9 @@ export default function AdminSettingsPage() {
                       </span>
                     </li>
                     <li>
-                      <span className="font-medium text-white">Welcome / login details</span>
+                      <span className="font-medium text-white">Welcome / claim link</span>
                       <span className="block text-xs text-neutral-400">
-                        Sent when you create a dealer account with a contact email (Admin → Accounts → Create account). Uses the Welcome subject/body templates.
+                        Sent when you create a dealer auth user (Admin → Accounts). Includes a one-click link to /claim-account — no temporary password in the email.
                       </span>
                     </li>
                     <li>
@@ -900,7 +900,7 @@ export default function AdminSettingsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                      Welcome / login body
+                      Welcome / dealer setup body
                     </label>
                     <textarea
                       className="mt-1 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-0 transition focus:border-accent focus:ring-2 focus:ring-accent/40"
@@ -911,8 +911,15 @@ export default function AdminSettingsPage() {
                           welcomeBody: e.target.value,
                         }))
                       }
-                      placeholder="Short text you want to reuse when welcoming new dealers…"
+                      placeholder={
+                        "Your account is ready.\n\nClick to set your password:\n{{claimLink}}\n\nEmail: {{email}}\nSign in later: {{loginUrl}}"
+                      }
+                      rows={5}
                     />
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Placeholders: {"{{claimLink}}"} (one-click setup), {"{{loginUrl}}"}, {"{{email}}"}. Legacy{" "}
+                      {"{{password}}"} is replaced with a short note if still in your template.
+                    </p>
                   </div>
                 </div>
               </div>

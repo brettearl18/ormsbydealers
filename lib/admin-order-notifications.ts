@@ -127,49 +127,56 @@ export function buildOrderActivity(
   accountNames: Map<string, string>,
   lastSeenMs: number,
   maxItems = 15,
-): { items: OrderActivityItem[]; unreadCount: number } {
+): {
+  items: OrderActivityItem[];
+  unreadCount: number;
+  /** Orders that match the dashboard feed rules (before unread filter). */
+  eligibleFeedOrderCount: number;
+} {
   const feedOrders = orders.filter(shouldShowOrderInAdminNotificationFeed);
+  const eligibleFeedOrderCount = feedOrders.length;
 
-  const unreadCount = feedOrders.filter(
-    (o) => firestoreDateToMs(o.updatedAt) > lastSeenMs,
-  ).length;
+  const rows: OrderActivityItem[] = feedOrders.map((o) => {
+    const updatedAtMs = firestoreDateToMs(o.updatedAt);
+    const createdAtMs = firestoreDateToMs(o.createdAt);
+    const highlights: string[] = [];
+    if (o.pendingOrmsbyRevisionReview) {
+      highlights.push("Dealer revision pending");
+    }
+    if (o.dealerPendingAdminProposedChanges) {
+      highlights.push("Awaiting dealer confirmation");
+    }
+    if (o.dealerNotifiedOrmsbyOfUpdatesAt && !o.pendingOrmsbyRevisionReview) {
+      highlights.push("Update notified");
+    }
+    const ageMs = Date.now() - createdAtMs;
+    const isLikelyNew =
+      createdAtMs > 0 &&
+      Math.abs(updatedAtMs - createdAtMs) < 120_000 &&
+      ageMs < 7 * 24 * 60 * 60 * 1000;
 
-  const items: OrderActivityItem[] = feedOrders
-    .map((o) => {
-      const updatedAtMs = firestoreDateToMs(o.updatedAt);
-      const createdAtMs = firestoreDateToMs(o.createdAt);
-      const highlights: string[] = [];
-      if (o.pendingOrmsbyRevisionReview) {
-        highlights.push("Dealer revision pending");
-      }
-      if (o.dealerPendingAdminProposedChanges) {
-        highlights.push("Awaiting dealer confirmation");
-      }
-      if (o.dealerNotifiedOrmsbyOfUpdatesAt && !o.pendingOrmsbyRevisionReview) {
-        highlights.push("Update notified");
-      }
-      const ageMs = Date.now() - createdAtMs;
-      const isLikelyNew =
-        createdAtMs > 0 &&
-        Math.abs(updatedAtMs - createdAtMs) < 120_000 &&
-        ageMs < 7 * 24 * 60 * 60 * 1000;
+    return {
+      id: o.id,
+      accountId: o.accountId,
+      accountName: accountNames.get(o.accountId),
+      status: o.status,
+      updatedAtMs,
+      createdAtMs,
+      isUnread: updatedAtMs > lastSeenMs,
+      kind: isLikelyNew ? ("new" as const) : ("updated" as const),
+      highlights,
+    };
+  });
 
-      return {
-        id: o.id,
-        accountId: o.accountId,
-        accountName: accountNames.get(o.accountId),
-        status: o.status,
-        updatedAtMs,
-        createdAtMs,
-        isUnread: updatedAtMs > lastSeenMs,
-        kind: isLikelyNew ? ("new" as const) : ("updated" as const),
-        highlights,
-      };
-    })
+  const unreadCount = rows.filter((r) => r.isUnread).length;
+
+  /** Only unread rows appear in the list; “mark all read” clears it until something updates again. */
+  const items = rows
+    .filter((r) => r.isUnread)
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
     .slice(0, maxItems);
 
-  return { items, unreadCount };
+  return { items, unreadCount, eligibleFeedOrderCount };
 }
 
 export function formatRelativeTime(ms: number): string {

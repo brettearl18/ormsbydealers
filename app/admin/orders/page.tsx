@@ -55,7 +55,8 @@ export default function AdminOrdersPage() {
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
+  /** ALL | PENDING_QUEUE = Submitted + Approved (matches “Pending” stat). */
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL" | "PENDING_QUEUE">("ALL");
   const [showReport, setShowReport] = useState(false);
   const [reportStatusFilter, setReportStatusFilter] = useState<OrderStatus[]>(["SUBMITTED", "APPROVED", "IN_PRODUCTION"]);
 
@@ -134,6 +135,7 @@ export default function AdminOrdersPage() {
       COMPLETED: orders.filter((o) => o.status === "COMPLETED").length,
       CANCELLED: orders.filter((o) => o.status === "CANCELLED").length,
     },
+    /** Submitted + Approved — shown first in list is by newest created date, so drafts often appear above these. */
     pending: orders.filter((o) => o.status === "SUBMITTED" || o.status === "APPROVED").length,
   };
 
@@ -145,7 +147,11 @@ export default function AdminOrdersPage() {
       order.shippingAddress?.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.poNumber?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === "ALL" || order.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "ALL" ||
+      (statusFilter === "PENDING_QUEUE"
+        ? order.status === "SUBMITTED" || order.status === "APPROVED"
+        : order.status === statusFilter);
     
     return matchesSearch && matchesStatus;
   });
@@ -331,7 +337,7 @@ export default function AdminOrdersPage() {
             </div>
             <p className="text-3xl font-bold text-white">{stats.total}</p>
             <p className="mt-1 text-xs text-neutral-400">
-              {stats.pending} pending approval
+              {stats.pending} submitted + approved
             </p>
           </div>
 
@@ -367,8 +373,17 @@ export default function AdminOrdersPage() {
             </div>
             <p className="text-3xl font-bold text-yellow-400">{stats.pending}</p>
             <p className="mt-1 text-xs text-neutral-400">
-              Awaiting action
+              Submitted + approved (list below is newest-first — use filter to jump here)
             </p>
+            {stats.pending > 0 && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter("PENDING_QUEUE")}
+                className="mt-3 w-full rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs font-semibold text-yellow-100 transition hover:bg-yellow-500/20"
+              >
+                Show these {stats.pending} orders
+              </button>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
@@ -582,10 +597,15 @@ export default function AdminOrdersPage() {
             <FunnelIcon className="h-5 w-5 text-neutral-400" />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "ALL")}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as OrderStatus | "ALL" | "PENDING_QUEUE")
+              }
               className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white outline-none transition focus:border-accent focus:bg-white/10"
             >
               <option value="ALL">All Statuses</option>
+              <option value="PENDING_QUEUE">
+                Pending — Submitted + Approved ({stats.pending})
+              </option>
               {Object.entries(STATUS_LABELS).map(([status, label]) => (
                 <option key={status} value={status}>
                   {label}

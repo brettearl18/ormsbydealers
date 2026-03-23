@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import admin from "firebase-admin";
 
+/** Matches Cloud Function bootstrap until dealer uses setup link or changes password. */
+const DEALER_INITIAL_PASSWORD =
+  process.env.DEALER_INITIAL_PASSWORD || "OrmsbyDealer2026";
+
 const PROJECT_ROOT = process.cwd();
 const TEMPLATE_PATH =
   process.env.DEALER_TEMPLATE_PATH ||
@@ -10,7 +14,6 @@ const TEMPLATE_PATH =
 const SERVICE_ACCOUNT_PATH =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ||
   path.join(PROJECT_ROOT, "..", "ormsbydistribute-firebase-adminsdk-fbsvc-21a40c5ae7.json");
-const TEMP_PASSWORD = process.env.DEALER_TEMP_PASSWORD || "OrmsbyDealer2026!@#";
 const APPLY = process.argv.includes("--apply");
 
 function readJson(filePath) {
@@ -33,13 +36,14 @@ function assertValidDealer(dealer, index) {
 async function ensureUser(auth, dealer) {
   const email = normalizeEmail(dealer.login.email);
   const displayName = dealer.dealerName || dealer.accountId;
+  const bootstrapPassword = DEALER_INITIAL_PASSWORD;
   let user;
   try {
     user = await auth.getUserByEmail(email);
     user = await auth.updateUser(user.uid, {
       email,
       displayName,
-      password: TEMP_PASSWORD,
+      password: bootstrapPassword,
       disabled: dealer.login.enabled === false,
     });
   } catch (err) {
@@ -47,7 +51,7 @@ async function ensureUser(auth, dealer) {
     user = await auth.createUser({
       email,
       displayName,
-      password: TEMP_PASSWORD,
+      password: bootstrapPassword,
       disabled: dealer.login.enabled === false,
       emailVerified: false,
     });
@@ -76,7 +80,9 @@ async function run() {
   console.log(`\nDealer records: ${dealers.length}`);
   console.log(`Mode: ${APPLY ? "APPLY" : "DRY RUN"}`);
   console.log(`Template: ${TEMPLATE_PATH}`);
-  console.log(`Temp password: ${"*".repeat(Math.min(TEMP_PASSWORD.length, 12))}\n`);
+  console.log(
+    `Initial password (not emailed; same as Cloud Functions): ${DEALER_INITIAL_PASSWORD}\n`,
+  );
 
   for (const dealer of dealers) {
     const email = normalizeEmail(dealer.login.email);
@@ -96,7 +102,7 @@ async function run() {
       accountId,
       tierId,
       currency,
-      mustChangePassword: true,
+      mustChangePassword: false,
     });
 
     await db.collection("users").doc(user.uid).set(
@@ -115,7 +121,8 @@ async function run() {
 
   console.log(
     APPLY
-      ? "\nCompleted. Users can sign in with temporary password and are forced to change it."
+      ? "\nCompleted. Send each dealer a setup link: Admin → Accounts → Resend welcome email,\n" +
+          "or use Create account with email (Cloud Function) so Mailgun/SMTP sends the claim link."
       : "\nDry run complete. Re-run with --apply to execute.",
   );
 }
