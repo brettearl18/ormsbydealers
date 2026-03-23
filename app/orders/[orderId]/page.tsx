@@ -27,6 +27,7 @@ import {
   PricesDoc,
 } from "@/lib/types";
 import Link from "next/link";
+import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
 import { fetchActiveGuitarDocsForPicker } from "@/lib/fetch-active-guitars";
@@ -93,6 +94,7 @@ export default function OrderDetailPage({
   const [respondingToAdminProposal, setRespondingToAdminProposal] = useState<
     "accept" | "reject" | null
   >(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -769,6 +771,26 @@ export default function OrderDetailPage({
     addQty > 0 &&
     (canDirectModify || isInProductionFlow);
 
+  async function handleDownloadOrderPdf() {
+    if (!order) return;
+    setPdfExporting(true);
+    try {
+      const { downloadOrderPdf } = await import("@/lib/generate-order-pdf");
+      downloadOrderPdf({
+        order,
+        account: account ?? null,
+        lines: orderLines,
+        guitarsMap,
+        variant: "dealer",
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Could not generate PDF. Try again.");
+    } finally {
+      setPdfExporting(false);
+    }
+  }
+
   return (
     <main className="flex flex-1 flex-col gap-8">
       <div className="flex items-center justify-between">
@@ -815,6 +837,15 @@ export default function OrderDetailPage({
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5 text-right">
+          <button
+            type="button"
+            onClick={handleDownloadOrderPdf}
+            disabled={pdfExporting}
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:border-accent/40 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <DocumentArrowDownIcon className="h-4 w-4" />
+            {pdfExporting ? "PDF…" : "Download order PDF"}
+          </button>
           {order.pendingOrmsbyRevisionReview && (
             <span className="rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-lg shadow-amber-900/30">
               Pending approval

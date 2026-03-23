@@ -27,7 +27,7 @@ import {
   BellIcon,
   UserGroupIcon,
   MagnifyingGlassIcon,
-  EnvelopeIcon,
+  ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
@@ -104,7 +104,7 @@ function ManageAccountsContent() {
     contactName: "",
   });
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
-  const [resendEmailAccountId, setResendEmailAccountId] = useState<string | null>(null);
+  const [copyLinkAccountId, setCopyLinkAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -348,7 +348,7 @@ function ManageAccountsContent() {
         alert(
           data.emailSent
             ? `Account created. A welcome email with a password setup link was sent to ${email}.`
-            : `Account created. Welcome email could not be sent (check Mailgun/SMTP). Use “Resend setup email” on this account, or support password OrmsbyDealer2026 until they use the link.`,
+            : `Account created. Welcome email could not be sent (check Mailgun/SMTP). Use “Copy email link” on this account and paste into your own email, or support password OrmsbyDealer2026 until they use the link.`,
         );
         setCreateSubmitting(false);
         return;
@@ -382,24 +382,31 @@ function ManageAccountsContent() {
     }
   }
 
-  async function handleResendLoginEmail(accountIdToResend: string) {
-    setResendEmailAccountId(accountIdToResend);
+  async function handleCopySetupLink(accountIdForLink: string) {
+    setCopyLinkAccountId(accountIdForLink);
     try {
-      const resend = httpsCallable<
+      const getLink = httpsCallable<
         { accountId: string; email?: string },
-        { emailSent: boolean }
-      >(functions, "resendDealerLoginEmail");
-      const res = await resend({ accountId: accountIdToResend });
-      const data = res.data as { emailSent: boolean };
-      alert(
-        data.emailSent
-          ? "Welcome email sent — dealer should open the setup link in that email to choose a password."
-          : "Email could not be sent (check Mailgun/SMTP settings).",
-      );
+        { claimLink: string; loginUrl: string; email: string }
+      >(functions, "getDealerSetupLink");
+      const res = await getLink({ accountId: accountIdForLink });
+      const { claimLink, loginUrl, email } = res.data as {
+        claimLink: string;
+        loginUrl: string;
+        email: string;
+      };
+      try {
+        await navigator.clipboard.writeText(claimLink);
+        alert(
+          `Setup link copied for ${email}.\n\nPaste it into your email to the dealer. They use it once to choose a password.\n\nLogin page (for your reference): ${loginUrl}`,
+        );
+      } catch {
+        window.prompt("Copy this setup link (Ctrl+C / Cmd+C):", claimLink);
+      }
     } catch (err: any) {
-      alert(err?.message || "Failed to resend welcome email.");
+      alert(err?.message || "Could not get setup link.");
     } finally {
-      setResendEmailAccountId(null);
+      setCopyLinkAccountId(null);
     }
   }
 
@@ -821,22 +828,22 @@ function ManageAccountsContent() {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleResendLoginEmail(account.id)}
+                          onClick={() => handleCopySetupLink(account.id)}
                           disabled={
-                            resendEmailAccountId === account.id ||
+                            copyLinkAccountId === account.id ||
                             !(account as AccountWithUsers).contactEmail?.trim()
                           }
                           title={
                             (account as AccountWithUsers).contactEmail?.trim()
-                              ? "Resend welcome email with password setup link to contact email"
+                              ? "Copy password-setup link to paste into your own email to the dealer"
                               : "Set contact email on account first"
                           }
                           className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <EnvelopeIcon className="h-4 w-4" />
-                          {resendEmailAccountId === account.id
-                            ? "Sending…"
-                            : "Resend setup email"}
+                          <ClipboardDocumentIcon className="h-4 w-4" />
+                          {copyLinkAccountId === account.id
+                            ? "Copying…"
+                            : "Copy email link"}
                         </button>
                         <Link
                           href={`/admin/accounts/${account.id}`}

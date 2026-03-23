@@ -16,7 +16,8 @@ import {
   MapPinIcon,
   TagIcon,
   DocumentTextIcon,
-  EnvelopeIcon,
+  ClipboardDocumentIcon,
+  ShoppingCartIcon,
 } from "@heroicons/react/24/outline";
 
 const STATUS_COLORS = {
@@ -117,8 +118,8 @@ export default function AccountDetailPage({
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<Partial<AccountDoc> & { id?: string }>({});
-  const [resendEmailLoading, setResendEmailLoading] = useState(false);
-  const [resendEmailMessage, setResendEmailMessage] = useState<string | null>(null);
+  const [copyLinkLoading, setCopyLinkLoading] = useState(false);
+  const [copyLinkMessage, setCopyLinkMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAccount() {
@@ -708,6 +709,13 @@ export default function AccountDetailPage({
                 <div className="rounded-lg border border-white/5 bg-black/20 p-8 text-center">
                   <DocumentTextIcon className="mx-auto h-12 w-12 text-neutral-600" />
                   <p className="mt-4 text-sm text-neutral-400">No orders found</p>
+                  <Link
+                    href={`/admin/accounts/${accountId}/create-order`}
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-soft"
+                  >
+                    <ShoppingCartIcon className="h-4 w-4" />
+                    Create first order
+                  </Link>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -832,6 +840,13 @@ export default function AccountDetailPage({
                 >
                   View All Orders
                 </Link>
+                <Link
+                  href={`/admin/accounts/${accountId}/create-order`}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent/20"
+                >
+                  <ShoppingCartIcon className="h-4 w-4" />
+                  Create order for account
+                </Link>
                 <button
                   type="button"
                   onClick={() => {
@@ -862,54 +877,65 @@ export default function AccountDetailPage({
                 <button
                   type="button"
                   disabled={
-                    resendEmailLoading ||
+                    copyLinkLoading ||
                     !(account as AccountDoc).contactEmail?.trim()
                   }
                   onClick={async () => {
-                    setResendEmailMessage(null);
-                    setResendEmailLoading(true);
+                    setCopyLinkMessage(null);
+                    setCopyLinkLoading(true);
                     try {
-                      const resend = httpsCallable<
+                      const getLink = httpsCallable<
                         { accountId: string; email?: string },
-                        { emailSent: boolean }
-                      >(functions, "resendDealerLoginEmail");
-                      const res = await resend({
+                        { claimLink: string; loginUrl: string; email: string }
+                      >(functions, "getDealerSetupLink");
+                      const res = await getLink({
                         accountId,
                         email: (account as AccountDoc).contactEmail?.trim() || undefined,
                       });
-                      const data = res.data as { emailSent: boolean };
-                      setResendEmailMessage(
-                        data.emailSent
-                          ? "Welcome email sent — dealer should use the setup link inside to choose a password."
-                          : "Sending failed (check Mailgun/SMTP settings).",
-                      );
+                      const { claimLink, loginUrl, email } = res.data as {
+                        claimLink: string;
+                        loginUrl: string;
+                        email: string;
+                      };
+                      try {
+                        await navigator.clipboard.writeText(claimLink);
+                        setCopyLinkMessage(
+                          `Copied setup link for ${email}. Paste it into your email to the dealer. Login: ${loginUrl}`,
+                        );
+                      } catch {
+                        window.prompt("Copy this setup link:", claimLink);
+                        setCopyLinkMessage(
+                          `Login page for your message: ${loginUrl}`,
+                        );
+                      }
                     } catch (err: any) {
-                      setResendEmailMessage(
-                        err?.message || "Failed to resend welcome email.",
+                      setCopyLinkMessage(
+                        err?.message || "Could not get setup link.",
                       );
                     } finally {
-                      setResendEmailLoading(false);
+                      setCopyLinkLoading(false);
                     }
                   }}
                   className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <EnvelopeIcon className="mr-2 inline h-4 w-4" />
-                  {resendEmailLoading ? "Sending…" : "Resend welcome / setup email"}
+                  <ClipboardDocumentIcon className="mr-2 inline h-4 w-4" />
+                  {copyLinkLoading ? "Getting link…" : "Copy email link"}
                 </button>
-                {resendEmailMessage && (
+                {copyLinkMessage && (
                   <p
                     className={
-                      resendEmailMessage.startsWith("Welcome email sent")
+                      copyLinkMessage.startsWith("Copied") ||
+                      copyLinkMessage.startsWith("Login page")
                         ? "text-sm text-green-400"
                         : "text-sm text-amber-400"
                     }
                   >
-                    {resendEmailMessage}
+                    {copyLinkMessage}
                   </p>
                 )}
                 {!(account as AccountDoc).contactEmail?.trim() && (
                   <p className="text-xs text-neutral-500">
-                    Set contact email on the account to resend the welcome email with setup link.
+                    Set contact email on the account to copy the setup link.
                   </p>
                 )}
                 <button className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10">

@@ -42,17 +42,38 @@ function fillDealerWelcomeEmailBody(
   return body;
 }
 
-/** Get dealer email for an order: prefer user doc, else account contactEmail. */
-async function getDealerEmailForOrder(accountId: string, createdByUid: string): Promise<string | null> {
-  const userSnap = await db.collection("users").doc(createdByUid).get();
-  if (userSnap.exists) {
-    const email = (userSnap.data() as { email?: string }).email;
-    if (email) return email;
+/**
+ * Get dealer email for order confirmation.
+ * Normal: logged-in user's profile, then account contact.
+ * Admin placing for an account: skip the admin's own user email; use contact then any user on that account.
+ */
+async function getDealerEmailForOrder(
+  accountId: string,
+  createdByUid: string,
+  opts?: { placedByAdmin?: boolean },
+): Promise<string | null> {
+  if (!opts?.placedByAdmin) {
+    const userSnap = await db.collection("users").doc(createdByUid).get();
+    if (userSnap.exists) {
+      const email = (userSnap.data() as { email?: string }).email;
+      if (email?.trim()) return email.trim();
+    }
   }
   const accountSnap = await db.collection("accounts").doc(accountId).get();
   if (accountSnap.exists) {
     const email = (accountSnap.data() as { contactEmail?: string }).contactEmail;
-    if (email) return email;
+    if (email?.trim()) return email.trim();
+  }
+  if (opts?.placedByAdmin) {
+    const usersQ = await db
+      .collection("users")
+      .where("accountId", "==", accountId)
+      .limit(10)
+      .get();
+    for (const d of usersQ.docs) {
+      const email = (d.data() as { email?: string }).email;
+      if (email?.trim()) return email.trim();
+    }
   }
   return null;
 }
@@ -227,6 +248,8 @@ interface SubmitOrderRequest {
     accepted: boolean;
     acceptedAt: string;
   };
+  /** Admin only: create order for this dealer account (uses account currency from Firestore). */
+  onBehalfOfAccountId?: string;
 }
 
 export const submitOrder = functions.https.onCall(async (data: SubmitOrderRequest, context: functions.https.CallableContext) => {
@@ -240,8 +263,13 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     }
 
     const uid = context.auth.uid;
+    const payload = data as SubmitOrderRequest & { onBehalfOfAccountId?: string };
     const { cartItems, shippingAddress, poNumber, notes, termsAccepted } =
-      data as SubmitOrderRequest;
+      payload;
+    const onBehalfOfAccountId =
+      typeof payload.onBehalfOfAccountId === "string"
+        ? payload.onBehalfOfAccountId.trim()
+        : "";
 
   // Validate input
   if (!cartItems || cartItems.length === 0) {
@@ -258,18 +286,45 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     );
   }
 
-  // Get user's accountId and currency from custom claims
-  const token = await admin.auth().getUser(uid);
-  const accountId = token.customClaims?.accountId as string | undefined;
-  // Base currency is AUD - orders are stored in dealer's currency for display
-  // but pricing is always in AUD
-  const currency = (token.customClaims?.currency as string | undefined) || "AUD";
+  const role = context.auth.token.role as string | undefined;
+  let accountId: string;
+  let currency: string;
+  let placedByAdmin = false;
 
-  if (!accountId) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "User account is not configured",
-    );
+  if (onBehalfOfAccountId) {
+    if (role !== "ADMIN") {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can submit orders on behalf of an account.",
+      );
+    }
+    const accSnap = await db.collection("accounts").doc(onBehalfOfAccountId).get();
+    if (!accSnap.exists) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Account not found.",
+      );
+    }
+    const acc = accSnap.data() as { currency?: string };
+    accountId = onBehalfOfAccountId;
+    currency = (acc.currency && String(acc.currency).trim()) || "AUD";
+    placedByAdmin = true;
+  } else {
+    // Get user's accountId and currency from custom claims
+    const token = await admin.auth().getUser(uid);
+    const claimAccountId = token.customClaims?.accountId as string | undefined;
+    // Base currency is AUD - orders are stored in dealer's currency for display
+    // but pricing is always in AUD
+    currency =
+      (token.customClaims?.currency as string | undefined) || "AUD";
+    accountId = claimAccountId || "";
+
+    if (!accountId) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "User account is not configured",
+      );
+    }
   }
 
   // Compute totals
@@ -330,7 +385,9 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
           emailTemplates?: { orderConfirmationSubject?: string; orderConfirmationBody?: string };
         };
         if (!settings.notifications?.orderCreatedEmail) return;
-        const dealerEmail = await getDealerEmailForOrder(accountId, uid);
+        const dealerEmail = await getDealerEmailForOrder(accountId, uid, {
+          placedByAdmin,
+        });
         if (!dealerEmail) return;
         const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
         const subject =
@@ -775,6 +832,91 @@ export const resendDealerLoginEmail = functions.https.onCall(
       throw new functions.https.HttpsError(
         "internal",
         error.message || "Failed to resend login email.",
+      );
+    }
+  },
+);
+
+/** Request body for getDealerSetupLink */
+interface GetDealerSetupLinkRequest {
+  accountId: string;
+  /** If omitted, uses account.contactEmail */
+  email?: string;
+}
+
+/**
+ * Returns a fresh password-setup (claim) link for the dealer — does not send email.
+ * Admin can paste the link into their own email client. Admin only.
+ */
+export const getDealerSetupLink = functions.https.onCall(
+  async (data: GetDealerSetupLinkRequest, context: functions.https.CallableContext) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "User must be authenticated.",
+        );
+      }
+      const role = context.auth.token.role as string | undefined;
+      if (role !== "ADMIN") {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Only admins can get dealer setup links.",
+        );
+      }
+
+      const accountId = typeof data?.accountId === "string" ? data.accountId.trim() : "";
+      if (!accountId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "accountId is required.",
+        );
+      }
+
+      const accountSnap = await db.collection("accounts").doc(accountId).get();
+      if (!accountSnap.exists) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Account not found.",
+        );
+      }
+      const accountData = accountSnap.data() as { contactEmail?: string };
+      const email =
+        (typeof data?.email === "string" ? data.email.trim() : null) ||
+        accountData.contactEmail?.trim() ||
+        null;
+      if (!email) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "No email on file. Set contact email on the account or pass email.",
+        );
+      }
+
+      const auth = admin.auth();
+      try {
+        await auth.getUserByEmail(email);
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found") {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "No Firebase user for that email. Create the user first (e.g. when adding the account with email).",
+          );
+        }
+        throw err;
+      }
+
+      const claimLink = await auth.generatePasswordResetLink(email, {
+        url: claimAccountContinueUrl(),
+      });
+      const loginUrl = `${PORTAL_BASE_URL}/login`;
+
+      return { claimLink, loginUrl, email };
+    } catch (error: any) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      console.error("Error in getDealerSetupLink:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to generate setup link.",
       );
     }
   },

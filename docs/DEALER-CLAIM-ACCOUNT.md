@@ -2,15 +2,15 @@
 
 ## What dealers do
 
-1. Ormsby creates their Auth user and sends the **welcome email** (from Admin → Accounts, or the `createDealerAuthUser` Cloud Function).
+1. Ormsby creates their Auth user and sends the **setup link** — either via the welcome email from `createDealerAuthUser` (if Mailgun/SMTP is configured), or by using **Copy email link** on Admin → Accounts to paste the link into your own email.
 2. The email contains a **single setup link** (Firebase password reset) — the temporary password is **not** in the email (it is a fixed internal default: `OrmsbyDealer2026` — support can give this only if the link fails; dealers should use the link first).
 3. The link opens **`/claim-account`** on the portal (after Firebase validates the action, when configured — see below).
 4. They enter a **new password** twice → they are **signed in** and sent to the dashboard.
 
 ## What Ormsby does
 
-- **Preferred:** Admin → Accounts → create dealer auth user / **Resend welcome email** (with Mailgun or SMTP configured in Settings).
-- **Bulk script:** `npm run provision:dealers -- --apply` sets the same initial password as Cloud Functions (`OrmsbyDealer2026`, overridable with env `DEALER_INITIAL_PASSWORD`). Then use **Resend welcome email** per account so each dealer gets a setup link.
+- **Preferred:** Admin → Accounts → create dealer auth user with email, then either automated welcome email (Mailgun/SMTP in Settings) or **Copy email link** and paste into your own message to the dealer.
+- **Bulk script:** `npm run provision:dealers -- --apply` sets the same initial password as Cloud Functions (`OrmsbyDealer2026`, overridable with env `DEALER_INITIAL_PASSWORD`). Then use **Copy email link** per account (or your existing automated welcome email if configured) so each dealer gets a setup link.
 
 ## Custom welcome copy
 

@@ -29,6 +29,7 @@ import Link from "next/link";
 import { 
   ArrowLeftIcon,
   DocumentArrowUpIcon,
+  DocumentArrowDownIcon,
   CalendarIcon,
   CheckCircleIcon,
   XCircleIcon
@@ -97,6 +98,7 @@ export default function AdminOrderDetailPage({
   const [removingLineId, setRemovingLineId] = useState<string | null>(null);
   const [adminProposeNote, setAdminProposeNote] = useState("");
   const [submittingProposedChanges, setSubmittingProposedChanges] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   useEffect(() => {
     const next: Record<string, { qty: string; unitPrice: string }> = {};
@@ -718,6 +720,26 @@ export default function AdminOrderDetailPage({
     );
   }
 
+  async function handleDownloadOrderPdf() {
+    if (!order) return;
+    setPdfExporting(true);
+    try {
+      const { downloadOrderPdf } = await import("@/lib/generate-order-pdf");
+      downloadOrderPdf({
+        order,
+        account: orderAccount,
+        lines: orderLines,
+        guitarsMap,
+        variant: "admin",
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Could not generate PDF. Try again or use Print to PDF from your browser.");
+    } finally {
+      setPdfExporting(false);
+    }
+  }
+
   if (error || !order) {
     return (
       <AdminGuard>
@@ -815,6 +837,16 @@ export default function AdminOrderDetailPage({
             >
               {order.status}
             </span>
+            <button
+              type="button"
+              onClick={handleDownloadOrderPdf}
+              disabled={pdfExporting}
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:border-accent/40 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Download a clean order form PDF to email or save"
+            >
+              <DocumentArrowDownIcon className="h-4 w-4" />
+              {pdfExporting ? "PDF…" : "Order PDF"}
+            </button>
           </div>
         </div>
 
