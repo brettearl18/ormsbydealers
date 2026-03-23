@@ -34,6 +34,21 @@ For the smoothest experience, point password-reset handling at your site:
 
 If the email link still opens Firebase’s default page first, dealers can still complete reset there; they may land on your **continue URL** afterward. The in-app **`/claim-account`** page is used when the link passes an `oobCode` query (typical when the action URL targets your app).
 
+## Troubleshooting: “Domain not allowlisted by project”
+
+Setup links use Firebase `generatePasswordResetLink` with continue URL  
+`https://<your-portal-host>/claim-account`. That **host** must be in **Firebase Console → Authentication → Settings → Authorized domains**.
+
+1. Open [Firebase Console](https://console.firebase.google.com) → your project → **Authentication** → **Settings** → **Authorized domains**.
+2. Click **Add domain** and add exactly the host you use in the browser (e.g. `ormsbydealers.vercel.app`).  
+   Do **not** include `https://` or a path.
+3. Wait a minute and try **Copy email link** again.
+
+Default portal URL in Cloud Functions is `https://ormsbydealers.vercel.app`. To point links at another domain without changing code:
+
+`firebase functions:config:set portal.base_url="https://your-approved-domain.com"`  
+then redeploy functions.
+
 ## Related
 
 - **Forgot password** (login page) uses the same reset flow and continues to `/claim-account`.

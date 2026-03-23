@@ -6,12 +6,42 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
-/** Base URL for dealer portal (used in email links). */
-const PORTAL_BASE_URL = "https://ormsbydealers.vercel.app";
+/**
+ * Production portal URL (emails, reset links, order URLs).
+ * Override without redeploying code: `firebase functions:config:set portal.base_url="https://your-domain.com"`
+ */
+function getPortalBaseUrl(): string {
+  try {
+    const portal = functions.config().portal as { base_url?: string } | undefined;
+    const u = portal?.base_url?.trim();
+    if (u) return u.replace(/\/$/, "");
+  } catch {
+    // e.g. local emulator without config
+  }
+  return "https://ormsbydealers.vercel.app";
+}
 
 /** Where password-reset / invite links should return (branded set-password page). */
 function claimAccountContinueUrl(): string {
-  return `${PORTAL_BASE_URL}/claim-account`;
+  return `${getPortalBaseUrl()}/claim-account`;
+}
+
+/** Firebase Auth rejects reset links if the continue URL host is not an authorized domain. */
+function rethrowIfPasswordLinkDomainBlocked(err: unknown): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/not allowlisted|authorized domains|continue url/i.test(msg)) {
+    let host = "your-portal-domain";
+    try {
+      host = new URL(claimAccountContinueUrl()).host;
+    } catch {
+      /* noop */
+    }
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `Firebase blocked the setup link. In Firebase Console go to Authentication → Settings → Authorized domains and add: ${host}\n\n(Or set functions config portal.base_url to match a domain already listed.)`,
+    );
+  }
+  throw err;
 }
 
 /**
@@ -389,7 +419,7 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
           placedByAdmin,
         });
         if (!dealerEmail) return;
-        const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
+        const orderUrl = `${getPortalBaseUrl()}/orders/${orderId}`;
         const subject =
           settings.emailTemplates?.orderConfirmationSubject ||
           "We've received your Ormsby order";
@@ -675,7 +705,7 @@ export const createDealerAuthUser = functions.https.onCall(
             const claimLink = await auth.generatePasswordResetLink(email, {
               url: claimAccountContinueUrl(),
             });
-            const loginUrl = `${PORTAL_BASE_URL}/login`;
+            const loginUrl = `${getPortalBaseUrl()}/login`;
             const welcomeSubject =
               settingsData?.emailTemplates?.welcomeSubject || "Set up your Ormsby dealer portal";
             const body = fillDealerWelcomeEmailBody(settingsData?.emailTemplates?.welcomeBody, {
@@ -804,7 +834,7 @@ export const resendDealerLoginEmail = functions.https.onCall(
           const claimLink = await auth.generatePasswordResetLink(email, {
             url: claimAccountContinueUrl(),
           });
-          const loginUrl = `${PORTAL_BASE_URL}/login`;
+          const loginUrl = `${getPortalBaseUrl()}/login`;
           const welcomeSubject =
             settingsData?.emailTemplates?.welcomeSubject ||
             "Set up your Ormsby dealer portal";
@@ -905,10 +935,15 @@ export const getDealerSetupLink = functions.https.onCall(
         throw err;
       }
 
-      const claimLink = await auth.generatePasswordResetLink(email, {
-        url: claimAccountContinueUrl(),
-      });
-      const loginUrl = `${PORTAL_BASE_URL}/login`;
+      let claimLink: string;
+      try {
+        claimLink = await auth.generatePasswordResetLink(email, {
+          url: claimAccountContinueUrl(),
+        });
+      } catch (linkErr: unknown) {
+        rethrowIfPasswordLinkDomainBlocked(linkErr);
+      }
+      const loginUrl = `${getPortalBaseUrl()}/login`;
 
       return { claimLink, loginUrl, email };
     } catch (error: any) {
@@ -1022,7 +1057,7 @@ export const onOrderUpdated = functions.firestore
       if (!dealerEmail) return;
 
       const newStatus = after.status || "Unknown";
-      const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
+      const orderUrl = `${getPortalBaseUrl()}/orders/${orderId}`;
       const subject =
         settings.emailTemplates?.statusChangeSubject ||
         "Your Ormsby order status has been updated";
@@ -1049,8 +1084,8 @@ export const onOrderRevisionWorkflowEmail = functions.firestore
     const orderId = context.params.orderId as string;
     const accountId = after.accountId as string | undefined;
     const createdByUid = after.createdByUid as string | undefined;
-    const orderUrl = `${PORTAL_BASE_URL}/orders/${orderId}`;
-    const adminOrderUrl = `${PORTAL_BASE_URL}/admin/orders/${orderId}`;
+    const orderUrl = `${getPortalBaseUrl()}/orders/${orderId}`;
+    const adminOrderUrl = `${getPortalBaseUrl()}/admin/orders/${orderId}`;
 
     try {
       const settingsSnap = await db.collection("adminSettings").doc("global").get();
