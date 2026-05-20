@@ -27,6 +27,7 @@ import {
   PricesDoc,
 } from "@/lib/types";
 import Link from "next/link";
+import { OrderFxEstimates } from "@/components/orders/OrderFxEstimates";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
@@ -776,7 +777,7 @@ export default function OrderDetailPage({
     setPdfExporting(true);
     try {
       const { downloadOrderPdf } = await import("@/lib/generate-order-pdf");
-      downloadOrderPdf({
+      await downloadOrderPdf({
         order,
         account: account ?? null,
         lines: orderLines,
@@ -1731,13 +1732,14 @@ export default function OrderDetailPage({
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-400">Subtotal</span>
                 <span className="font-medium text-white">
-                  {order.currency === "USD" ? "$" : order.currency}{" "}
+                  AUD{" "}
                   {order.totals.subtotal.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </span>
               </div>
+              <OrderFxEstimates subtotalAud={order.totals.subtotal} />
 
               {totalGuitars > 0 && (
                 <div className="border-t border-white/10 pt-3">

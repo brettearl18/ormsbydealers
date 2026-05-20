@@ -26,6 +26,7 @@ import {
 } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import Link from "next/link";
+import { OrderFxEstimates } from "@/components/orders/OrderFxEstimates";
 import { 
   ArrowLeftIcon,
   DocumentArrowUpIcon,
@@ -725,7 +726,7 @@ export default function AdminOrderDetailPage({
     setPdfExporting(true);
     try {
       const { downloadOrderPdf } = await import("@/lib/generate-order-pdf");
-      downloadOrderPdf({
+      await downloadOrderPdf({
         order,
         account: orderAccount,
         lines: orderLines,
@@ -1513,13 +1514,14 @@ export default function AdminOrderDetailPage({
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Subtotal</span>
                   <span className="font-medium text-white">
-                    {order.currency === "USD" ? "$" : order.currency}{" "}
+                    AUD{" "}
                     {order.totals.subtotal.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </span>
                 </div>
+                <OrderFxEstimates subtotalAud={order.totals.subtotal} />
                 {order.poNumber && (
                   <div className="pt-2 border-t border-white/10">
                     <p className="text-neutral-400">PO Number</p>
