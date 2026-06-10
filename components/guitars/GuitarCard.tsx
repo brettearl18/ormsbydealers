@@ -28,6 +28,10 @@ interface Props {
   /** When displaying in non-AUD currency, pass AUD price for add-to-cart so cart stays in base currency */
   unitPriceAud?: number | null;
   onQuickView?: () => void;
+  /** Override product detail link (e.g. public catalogue). */
+  detailHref?: string;
+  hideQuickAdd?: boolean;
+  configureLabel?: string;
 }
 
 export function GuitarCard({
@@ -42,9 +46,13 @@ export function GuitarCard({
   discountPercent,
   unitPriceAud,
   onQuickView,
+  detailHref,
+  hideQuickAdd = false,
+  configureLabel = "View",
 }: Props) {
   const { addItem } = useCart();
   const cartPrice = unitPriceAud ?? price.value;
+  const productHref = detailHref ?? `/dealer/guitars/${id}`;
 
   const onAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -71,7 +79,7 @@ export function GuitarCard({
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-3xl glass-strong shadow-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl hover:shadow-accent/20">
-      <Link href={`/dealer/guitars/${id}`} className="block">
+      <Link href={productHref} className="block">
         <div className="relative aspect-[4/6] w-full overflow-hidden bg-neutral-900">
           {heroImage ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -100,14 +108,16 @@ export function GuitarCard({
                   <EyeIcon className="h-5 w-5" />
                 </button>
               )}
-              <button
-                onClick={onAddToCart}
-                disabled={price.value == null}
-                className="ml-2 rounded-xl bg-gradient-to-r from-accent to-accent-soft p-3.5 text-black shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Add to cart"
-              >
-                <ShoppingCartIcon className="h-5 w-5" />
-              </button>
+              {!hideQuickAdd && (
+                <button
+                  onClick={onAddToCart}
+                  disabled={price.value == null}
+                  className="ml-2 rounded-xl bg-gradient-to-r from-accent to-accent-soft p-3.5 text-black shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Add to cart"
+                >
+                  <ShoppingCartIcon className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -118,7 +128,7 @@ export function GuitarCard({
           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-500">
             {series}
           </p>
-          <Link href={`/dealer/guitars/${id}`}>
+          <Link href={productHref}>
             <h3 className="text-base font-semibold text-white transition hover:text-accent-soft">
               {name}
             </h3>
@@ -159,11 +169,11 @@ export function GuitarCard({
             </div>
           </div>
           <Link
-            href={`/dealer/guitars/${id}`}
+            href={productHref}
             className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-xs font-bold shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-accent/30"
             style={{ backgroundColor: '#F97316', color: '#000000' }}
           >
-            View
+            {configureLabel}
           </Link>
         </div>
       </div>

@@ -957,6 +957,422 @@ export const getDealerSetupLink = functions.https.onCall(
   },
 );
 
+/** Public dealer catalogue — Run 19 only, fixed 40% off RRP. */
+const PUBLIC_CATALOGUE_RUN = "Run 19";
+const PUBLIC_CATALOGUE_DISCOUNT = 40;
+const PUBLIC_CATALOGUE_FALLBACK_EMAIL = "dealers@ormsbyguitars.com";
+
+function normalizeRunLabel(run: string | undefined): string {
+  return (run ?? "").trim().toLowerCase();
+}
+
+function dealerPriceFromRrp(rrp: number, discountPercent: number): number {
+  const pct = Math.max(0, Math.min(100, discountPercent));
+  return rrp * (1 - pct / 100);
+}
+
+type OptionValueForRrp = {
+  valueId: string;
+  label?: string;
+  rrpAdjustment?: number;
+  priceAdjustment?: number;
+  skuSuffix?: string;
+  images?: string[];
+};
+
+function rrpForVariant(
+  prices: { rrp?: number } | null | undefined,
+  options?: Array<{ optionId: string; values: OptionValueForRrp[] }> | null,
+  selectedOptions?: Record<string, string> | null,
+  discountPercent = 0,
+): number | null {
+  if (!prices || prices.rrp == null) return null;
+  let rrp = prices.rrp;
+  if (!options || !selectedOptions) return rrp;
+  const dealerFactor = 1 - Math.max(0, Math.min(100, discountPercent)) / 100;
+  for (const opt of options) {
+    const valueId = selectedOptions[opt.optionId];
+    if (!valueId) continue;
+    const val = opt.values.find((v) => v.valueId === valueId);
+    if (!val) continue;
+    if (val.rrpAdjustment != null) {
+      rrp += val.rrpAdjustment;
+    } else if (val.priceAdjustment != null && val.priceAdjustment !== 0 && dealerFactor > 0) {
+      rrp += val.priceAdjustment / dealerFactor;
+    }
+  }
+  return rrp;
+}
+
+function buildVariantSku(
+  baseSku: string,
+  options?: Array<{ optionId: string; values: Array<{ valueId: string; skuSuffix?: string }> }> | null,
+  selectedOptions?: Record<string, string> | null,
+): string {
+  let sku = baseSku;
+  if (!options || !selectedOptions) return sku;
+  for (const opt of options) {
+    const valueId = selectedOptions[opt.optionId];
+    if (!valueId) continue;
+    const val = opt.values.find((v) => v.valueId === valueId);
+    if (val?.skuSuffix) sku += val.skuSuffix;
+  }
+  return sku;
+}
+
+function formatAud(amount: number): string {
+  const n = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  const [intPart, dec] = n.toFixed(2).split(".");
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}A$${withCommas}.${dec}`;
+}
+
+async function loadPublicCatalogueGuitars() {
+  const snap = await db.collection("guitars").where("status", "==", "ACTIVE").get();
+  const guitars: Array<Record<string, unknown>> = [];
+
+  for (const docSnap of snap.docs) {
+    const guitar = docSnap.data() as {
+      sku: string;
+      name: string;
+      series: string;
+      run?: string;
+      etaDelivery?: string;
+      images?: string[];
+      specs?: Record<string, unknown>;
+      options?: Array<{
+        optionId: string;
+        label: string;
+        type: string;
+        required: boolean;
+        values: Array<
+          OptionValueForRrp & { label: string; skuSuffix?: string; images?: string[] }
+        >;
+      }>;
+    };
+    const runLabel = (guitar.run || guitar.series || "").trim();
+    if (normalizeRunLabel(runLabel) !== normalizeRunLabel(PUBLIC_CATALOGUE_RUN)) continue;
+
+    const [availabilitySnap, pricesSnap] = await Promise.all([
+      db.collection("availability").doc(docSnap.id).get(),
+      db.collection("prices").doc(docSnap.id).get(),
+    ]);
+
+    const availability = availabilitySnap.exists
+      ? availabilitySnap.data()
+      : { state: "PREORDER", qtyAvailable: 0, qtyAllocated: 0 };
+    const prices = pricesSnap.exists ? pricesSnap.data() : null;
+    const baseRrp = rrpForVariant(
+      prices as { rrp?: number } | null,
+      guitar.options ?? null,
+      null,
+      PUBLIC_CATALOGUE_DISCOUNT,
+    );
+    const baseDealerPrice =
+      baseRrp != null ? dealerPriceFromRrp(baseRrp, PUBLIC_CATALOGUE_DISCOUNT) : null;
+
+    guitars.push({
+      id: docSnap.id,
+      sku: guitar.sku,
+      name: guitar.name,
+      series: guitar.series,
+      run: runLabel,
+      etaDelivery: guitar.etaDelivery ?? "",
+      images: guitar.images ?? [],
+      specs: guitar.specs ?? {},
+      options: guitar.options ?? [],
+      availability,
+      pricing: {
+        currency: "AUD",
+        discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+        rrp: baseRrp,
+        dealerPrice: baseDealerPrice,
+      },
+    });
+  }
+
+  guitars.sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" }),
+  );
+  return guitars;
+}
+
+/**
+ * Public catalogue data for Run 19 (no auth). Prices are RRP with 40% dealer discount.
+ */
+export const getPublicCatalogueRun19 = functions.https.onCall(async () => {
+  try {
+    const guitars = await loadPublicCatalogueGuitars();
+    return {
+      run: PUBLIC_CATALOGUE_RUN,
+      discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+      currency: "AUD",
+      guitars,
+    };
+  } catch (error: unknown) {
+    console.error("getPublicCatalogueRun19:", error);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to load catalogue.",
+    );
+  }
+});
+
+interface PublicCatalogueLineInput {
+  guitarId: string;
+  qty: number;
+  selectedOptions?: Record<string, string>;
+}
+
+interface SubmitPublicCatalogueOrderRequest {
+  company: string;
+  contactName: string;
+  email: string;
+  phone?: string;
+  territory?: string;
+  poNumber?: string;
+  notes?: string;
+  shippingAddress?: {
+    company?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    region?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  lines: PublicCatalogueLineInput[];
+}
+
+/**
+ * Public Run 19 catalogue order — emails Ormsby + confirmation to dealer (no auth).
+ * Prices recomputed server-side; only Run 19 guitars allowed.
+ */
+export const submitPublicCatalogueOrder = functions.https.onCall(
+  async (data: SubmitPublicCatalogueOrderRequest) => {
+    const company = typeof data?.company === "string" ? data.company.trim() : "";
+    const contactName =
+      typeof data?.contactName === "string" ? data.contactName.trim() : "";
+    const email = typeof data?.email === "string" ? data.email.trim() : "";
+    const phone = typeof data?.phone === "string" ? data.phone.trim() : "";
+    const territory =
+      typeof data?.territory === "string" ? data.territory.trim() : "";
+    const poNumber =
+      typeof data?.poNumber === "string" ? data.poNumber.trim() : "";
+    const notes = typeof data?.notes === "string" ? data.notes.trim() : "";
+    const lines = Array.isArray(data?.lines) ? data.lines : [];
+
+    if (!company || !contactName || !email) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Company, contact name, and email are required.",
+      );
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid email address.");
+    }
+    if (lines.length === 0) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Add at least one guitar to your order.",
+      );
+    }
+
+    const allowedGuitars = await loadPublicCatalogueGuitars();
+    const allowedById = new Map(allowedGuitars.map((g) => [String(g.id), g]));
+
+    const validatedLines: Array<{
+      guitarId: string;
+      sku: string;
+      name: string;
+      qty: number;
+      unitPrice: number;
+      lineTotal: number;
+      selectedOptions: Record<string, string>;
+      optionSummary: string;
+    }> = [];
+
+    for (const line of lines) {
+      const guitarId = typeof line?.guitarId === "string" ? line.guitarId.trim() : "";
+      const qty = Number(line?.qty);
+      const selectedOptions =
+        line?.selectedOptions && typeof line.selectedOptions === "object"
+          ? (line.selectedOptions as Record<string, string>)
+          : {};
+
+      if (!guitarId || !Number.isFinite(qty) || qty < 1 || qty > 99) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Each line must include a guitar and quantity between 1 and 99.",
+        );
+      }
+
+      const guitar = allowedById.get(guitarId);
+      if (!guitar) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "One or more guitars are not part of the Run 19 catalogue.",
+        );
+      }
+
+      const options = (guitar.options as Array<{
+        optionId: string;
+        label: string;
+        required: boolean;
+        values: Array<{ valueId: string; label: string; skuSuffix?: string }>;
+      }>) ?? [];
+
+      for (const opt of options) {
+        if (opt.required && !selectedOptions[opt.optionId]) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            `Please select ${opt.label} for ${String(guitar.name)}.`,
+          );
+        }
+      }
+
+      const pricesSnap = await db.collection("prices").doc(guitarId).get();
+      const prices = pricesSnap.exists ? pricesSnap.data() : null;
+      const rrp = rrpForVariant(
+        prices as { rrp?: number } | null,
+        options,
+        selectedOptions,
+        PUBLIC_CATALOGUE_DISCOUNT,
+      );
+      if (rrp == null) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `Pricing unavailable for ${String(guitar.name)}.`,
+        );
+      }
+
+      const unitPrice = dealerPriceFromRrp(rrp, PUBLIC_CATALOGUE_DISCOUNT);
+      const sku = buildVariantSku(String(guitar.sku), options, selectedOptions);
+      const optionSummary = options
+        .map((opt) => {
+          const valueId = selectedOptions[opt.optionId];
+          if (!valueId) return null;
+          const val = opt.values.find((v) => v.valueId === valueId);
+          return val ? `${opt.label}: ${val.label}` : null;
+        })
+        .filter(Boolean)
+        .join(", ");
+
+      validatedLines.push({
+        guitarId,
+        sku,
+        name: String(guitar.name),
+        qty: Math.floor(qty),
+        unitPrice,
+        lineTotal: unitPrice * Math.floor(qty),
+        selectedOptions,
+        optionSummary,
+      });
+    }
+
+    const subtotal = validatedLines.reduce((sum, l) => sum + l.lineTotal, 0);
+    const supportEmail =
+      (await getSupportEmailFromSettings()) || PUBLIC_CATALOGUE_FALLBACK_EMAIL;
+
+    const lineText = validatedLines
+      .map(
+        (l, i) =>
+          `${i + 1}. ${l.sku} — ${l.name}${l.optionSummary ? ` (${l.optionSummary})` : ""}\n` +
+          `   Qty: ${l.qty} · Unit: ${formatAud(l.unitPrice)} · Line: ${formatAud(l.lineTotal)}`,
+      )
+      .join("\n");
+
+    const ship = data.shippingAddress;
+    const shipLines: string[] = [];
+    if (ship?.company?.trim()) shipLines.push(ship.company.trim());
+    if (ship?.line1?.trim()) shipLines.push(ship.line1.trim());
+    if (ship?.line2?.trim()) shipLines.push(ship.line2.trim());
+    const cityLine = [ship?.city, ship?.region, ship?.postalCode]
+      .filter((p) => typeof p === "string" && p.trim())
+      .join(", ");
+    if (cityLine) shipLines.push(cityLine);
+    if (ship?.country?.trim()) shipLines.push(ship.country.trim());
+
+    const internalBody = [
+      `Run 19 Dealer Catalogue — order request`,
+      `========================================`,
+      ``,
+      `Company: ${company}`,
+      `Contact: ${contactName}`,
+      `Email: ${email}`,
+      phone ? `Phone: ${phone}` : "",
+      territory ? `Territory: ${territory}` : "",
+      poNumber ? `PO: ${poNumber}` : "",
+      ``,
+      shipLines.length ? `Ship to:\n${shipLines.map((l) => `  ${l}`).join("\n")}` : "",
+      ``,
+      `Pricing: ${PUBLIC_CATALOGUE_DISCOUNT}% off RRP (AUD dealer price)`,
+      ``,
+      `Line items:`,
+      lineText,
+      ``,
+      `Subtotal (AUD): ${formatAud(subtotal)}`,
+      notes ? `\nNotes:\n${notes}` : "",
+      ``,
+      `Submitted via public catalogue: ${getPortalBaseUrl()}/catalogue/run-19`,
+      `Time: ${new Date().toISOString()}`,
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
+
+    const dealerBody = [
+      `Hi ${contactName},`,
+      ``,
+      `Thanks for your Run 19 catalogue order request for ${company}.`,
+      `Our team will review it and get back to you shortly.`,
+      ``,
+      `Summary (${PUBLIC_CATALOGUE_DISCOUNT}% dealer discount on RRP):`,
+      lineText,
+      ``,
+      `Subtotal (AUD): ${formatAud(subtotal)}`,
+      notes ? `\nYour notes:\n${notes}` : "",
+      ``,
+      `— Ormsby Guitars`,
+    ].join("\n");
+
+    await db.collection("publicCatalogueEnquiries").add({
+      catalogueRun: PUBLIC_CATALOGUE_RUN,
+      discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+      status: "NEW",
+      company,
+      contactName,
+      email,
+      phone: phone || null,
+      territory: territory || null,
+      poNumber: poNumber || null,
+      notes: notes || null,
+      shippingAddress: ship || null,
+      lines: validatedLines,
+      totals: { subtotal, currency: "AUD" },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await sendEmail({
+      to: supportEmail,
+      subject: `Run 19 catalogue order — ${company}`,
+      text: internalBody,
+    });
+    await sendEmail({
+      to: email,
+      subject: `Run 19 catalogue order received — ${company}`,
+      text: dealerBody,
+    });
+
+    return {
+      success: true,
+      subtotal,
+      currency: "AUD",
+      lineCount: validatedLines.length,
+    };
+  },
+);
+
 /**
  * Refresh FX rates from Frankfurter API (free, no API key).
  * Base: AUD. Targets: USD, EUR, GBP, CAD for EU, USA, GBP, CAD dealers.

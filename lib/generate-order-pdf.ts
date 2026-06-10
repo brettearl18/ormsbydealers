@@ -313,6 +313,28 @@ export async function downloadOrderPdf(
   doc.text("ORDER SUMMARY", margin, y);
   y += 8;
 
+  const colRightX = pageW / 2 + 6;
+  const colLeftW = colRightX - margin - 4;
+  const colRightW = pageW - margin - colRightX;
+
+  const drawWrappedLines = (
+    lines: string[],
+    x: number,
+    startY: number,
+    maxWidth: number,
+    lineGap = 4.5,
+  ): number => {
+    let cy = startY;
+    lines.forEach((line) => {
+      const wrapped = doc.splitTextToSize(line, maxWidth);
+      wrapped.forEach((segment: string) => {
+        doc.text(segment, x, cy);
+        cy += lineGap;
+      });
+    });
+    return cy;
+  };
+
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   const meta: string[] = [
@@ -335,31 +357,30 @@ export async function downloadOrderPdf(
       : "",
   ].filter(Boolean);
 
-  meta.forEach((line) => {
-    doc.text(line, margin, y);
-    y += 4.5;
-  });
+  const blockTopY = y;
+  let yLeft = drawWrappedLines(meta, margin, blockTopY, colLeftW);
 
   if (fx && showUsdEurApprox) {
-    y += 2;
+    yLeft += 2;
     doc.setFont("helvetica", "italic");
     doc.setFontSize(8);
     doc.setTextColor(80, 80, 80);
-    doc.text(
-      `Indicative FX (${formatFxAsOf(fx.asOf)}): ${formatFxRatesHeader(fx)}`,
+    yLeft = drawWrappedLines(
+      [
+        `Indicative FX (${formatFxAsOf(fx.asOf)}): ${formatFxRatesHeader(fx)}`,
+      ],
       margin,
-      y,
+      yLeft,
+      colLeftW,
+      3.8,
     );
     doc.setTextColor(30, 30, 30);
     doc.setFont("helvetica", "normal");
-    y += 5;
-  } else {
-    y += 4;
+    doc.setFontSize(9);
   }
 
   doc.setFont("helvetica", "bold");
-  doc.text("Dealer / account", margin, y);
-  y += 5;
+  doc.text("Dealer / account", colRightX, blockTopY);
   doc.setFont("helvetica", "normal");
   const dealerLines = [
     account?.name || order.shippingAddress.company || "—",
@@ -368,11 +389,14 @@ export async function downloadOrderPdf(
     account?.contactEmail ? `Email: ${account.contactEmail}` : "",
     account?.tierId ? `Tier: ${account.tierId}` : "",
   ].filter(Boolean);
-  dealerLines.forEach((line) => {
-    doc.text(line, margin, y);
-    y += 4.5;
-  });
-  y += 6;
+  const yRight = drawWrappedLines(
+    dealerLines,
+    colRightX,
+    blockTopY + 5,
+    colRightW,
+  );
+
+  y = Math.max(yLeft, yRight) + 6;
 
   doc.setFont("helvetica", "bold");
   doc.text("Ship to", margin, y);
@@ -475,41 +499,78 @@ export async function downloadOrderPdf(
     },
   });
 
+  const pageH = doc.internal.pageSize.getHeight();
+  const bottomSafe = 22;
   const finalY =
     (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable
       ?.finalY ?? y + 40;
   let footY = finalY + 10;
 
+  const ensureFootRoom = (neededMm: number) => {
+    if (footY + neededMm > pageH - bottomSafe) {
+      doc.addPage();
+      footY = margin;
+      doc.setTextColor(30, 30, 30);
+    }
+  };
+
+  const subtotalLineMm = 6.5;
+  const totalsLineCount =
+    1 + (usdRate != null ? 1 : 0) + (eurRate != null ? 1 : 0);
+  const totalsBlockMm = 8 + totalsLineCount * subtotalLineMm;
+
+  let footerTailMm = 12;
+  if (order.notes?.trim()) {
+    const noteLines = doc.splitTextToSize(
+      order.notes.trim(),
+      pageW - 2 * margin,
+    );
+    footerTailMm += 5 + noteLines.length * 4 + 6;
+  }
+  const disclaimer = buildFxDisclaimer(territory, fx);
+  const discLines = doc.splitTextToSize(disclaimer, pageW - 2 * margin);
+  footerTailMm += discLines.length * 3.5 + 8;
+
+  ensureFootRoom(totalsBlockMm + footerTailMm);
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.2);
+  doc.line(margin, footY - 3, pageW - margin, footY - 3);
+  footY += 4;
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(30, 30, 30);
   const subtotalAud = order.totals.subtotal;
-  doc.text(`Subtotal (${AUD})`, pageW - margin - 55, footY);
+  doc.text(`Subtotal (${AUD})`, pageW - margin - 58, footY);
   doc.text(formatMoney(subtotalAud, AUD), pageW - margin, footY, {
     align: "right",
   });
-  footY += 6;
+  footY += subtotalLineMm;
 
   if (usdRate != null) {
+    ensureFootRoom(subtotalLineMm * 2);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("Approx. subtotal (USD)", pageW - margin - 55, footY);
+    doc.text("Approx. subtotal (USD)", pageW - margin - 58, footY);
     doc.text(formatMoney(subtotalAud * usdRate, "USD"), pageW - margin, footY, {
       align: "right",
     });
-    footY += 6;
+    footY += subtotalLineMm;
   }
   if (eurRate != null) {
+    ensureFootRoom(subtotalLineMm + 6);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("Approx. subtotal (EUR)", pageW - margin - 55, footY);
+    doc.text("Approx. subtotal (EUR)", pageW - margin - 58, footY);
     doc.text(formatMoney(subtotalAud * eurRate, "EUR"), pageW - margin, footY, {
       align: "right",
     });
-    footY += 8;
+    footY += subtotalLineMm + 2;
   }
 
   if (order.notes?.trim()) {
+    ensureFootRoom(28);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.text("Notes", margin, footY);
@@ -521,10 +582,7 @@ export async function downloadOrderPdf(
       pageW - 2 * margin,
     );
     noteLines.forEach((line: string) => {
-      if (footY > doc.internal.pageSize.getHeight() - 24) {
-        doc.addPage();
-        footY = margin;
-      }
+      ensureFootRoom(5);
       doc.text(line, margin, footY);
       footY += 4;
     });
@@ -533,13 +591,8 @@ export async function downloadOrderPdf(
 
   doc.setFontSize(7);
   doc.setTextColor(100, 100, 100);
-  const disclaimer = buildFxDisclaimer(territory, fx);
-  const discLines = doc.splitTextToSize(disclaimer, pageW - 2 * margin);
   discLines.forEach((line: string) => {
-    if (footY > doc.internal.pageSize.getHeight() - 18) {
-      doc.addPage();
-      footY = margin;
-    }
+    ensureFootRoom(5);
     doc.text(line, margin, footY);
     footY += 3.5;
   });

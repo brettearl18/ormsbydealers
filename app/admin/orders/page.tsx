@@ -36,10 +36,20 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   CANCELLED: "bg-red-500/20 text-red-400",
 };
 
+function normalizeRun(run: string | undefined): string {
+  return (run ?? "").trim().toLowerCase();
+}
+
+function runMatches(guitarRun: string | undefined, filter: string): boolean {
+  if (!filter.trim()) return true;
+  return normalizeRun(guitarRun) === normalizeRun(filter);
+}
+
 interface GuitarOrderSummary {
   guitarId: string;
   sku: string;
   name: string;
+  run?: string;
   totalQty: number;
   variations: Array<{
     selectedOptions: Record<string, string>;
@@ -59,6 +69,8 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL" | "PENDING_QUEUE">("ALL");
   const [showReport, setShowReport] = useState(false);
   const [reportStatusFilter, setReportStatusFilter] = useState<OrderStatus[]>(["SUBMITTED", "APPROVED", "IN_PRODUCTION"]);
+  /** Empty = all runs; otherwise match guitars.run (e.g. "Run 19"). */
+  const [reportRunFilter, setReportRunFilter] = useState("");
 
   useEffect(() => {
     fetchOrders();
@@ -171,6 +183,17 @@ export default function AdminOrdersPage() {
     reportStatusFilter.includes(order.status)
   );
 
+  const runsOnOrders = (() => {
+    const runs = new Set<string>();
+    for (const order of reportOrders) {
+      for (const line of orderLines.get(order.id) || []) {
+        const run = guitarsMap.get(line.guitarId)?.run?.trim();
+        if (run) runs.add(run);
+      }
+    }
+    return Array.from(runs).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  })();
+
   // Generate manufacturer report - aggregate guitars from orders
   const generateManufacturerReport = (): GuitarOrderSummary[] => {
     // Aggregate guitars from all order lines
@@ -181,6 +204,8 @@ export default function AdminOrdersPage() {
       
       for (const line of lines) {
         const guitar = guitarsMap.get(line.guitarId);
+        if (!runMatches(guitar?.run, reportRunFilter)) continue;
+
         const key = `${line.guitarId}-${JSON.stringify(line.selectedOptions || {})}`;
         
         if (!guitarSummary.has(key)) {
@@ -188,6 +213,7 @@ export default function AdminOrdersPage() {
             guitarId: line.guitarId,
             sku: line.sku,
             name: line.name,
+            run: guitar?.run?.trim() || undefined,
             totalQty: 0,
             variations: [],
           });
@@ -270,17 +296,19 @@ export default function AdminOrdersPage() {
 
   // Export report as CSV
   const exportReportAsCSV = () => {
-    const headers = ["SKU", "Guitar Name", "Variation", "Quantity", "Orders"];
+    const headers = ["SKU", "Guitar Name", "Run", "Variation", "Quantity", "Orders"];
     const rows = manufacturerReport.flatMap((guitar) => {
       const guitarDoc = guitarsMap.get(guitar.guitarId);
+      const runLabel = guitar.run ?? "";
       if (guitar.variations.length === 0) {
-        return [[guitar.sku, guitar.name, "Base", guitar.totalQty, ""]];
+        return [[guitar.sku, guitar.name, runLabel, "Base", guitar.totalQty, ""]];
       }
       return guitar.variations.map((variation) => {
         const variationStr = formatVariationString(variation, guitarDoc);
         return [
           guitar.sku,
           guitar.name,
+          runLabel,
           variationStr || "Base",
           variation.qty.toString(),
           variation.orders.length.toString(),
@@ -293,11 +321,14 @@ export default function AdminOrdersPage() {
       ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
     ].join("\n");
 
+    const runSlug = reportRunFilter.trim()
+      ? `-${reportRunFilter.trim().replace(/\s+/g, "-").toLowerCase()}`
+      : "";
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `manufacturer-report-${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute("download", `manufacturer-report${runSlug}-${new Date().toISOString().split("T")[0]}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
@@ -431,10 +462,30 @@ export default function AdminOrdersPage() {
               <div>
                 <h2 className="text-xl font-semibold text-white">Manufacturer Report</h2>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Aggregated guitar quantities from all orders for manufacturing
+                  {reportRunFilter.trim()
+                    ? `Guitars on order labeled “${reportRunFilter.trim()}” (from catalog run field), by variation`
+                    : "Aggregated guitar quantities from all orders for manufacturing"}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="report-run-filter" className="text-xs text-neutral-400">
+                    Run (catalog label)
+                  </label>
+                  <select
+                    id="report-run-filter"
+                    value={reportRunFilter}
+                    onChange={(e) => setReportRunFilter(e.target.value)}
+                    className="min-w-[10rem] rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none transition focus:border-accent"
+                  >
+                    <option value="">All runs</option>
+                    {runsOnOrders.map((run) => (
+                      <option key={run} value={run}>
+                        {run}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs text-neutral-400">Include Status:</label>
                   <div className="flex flex-wrap gap-2">
@@ -482,7 +533,11 @@ export default function AdminOrdersPage() {
 
             {manufacturerReport.length === 0 ? (
               <div className="rounded-lg border border-white/5 bg-black/20 p-8 text-center">
-                <p className="text-sm text-neutral-400">No guitars found in selected orders</p>
+                <p className="text-sm text-neutral-400">
+                  {reportRunFilter.trim()
+                    ? `No guitars labeled “${reportRunFilter.trim()}” in orders with the selected statuses`
+                    : "No guitars found in selected orders"}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -494,6 +549,9 @@ export default function AdminOrdersPage() {
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
                         Guitar Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                        Run
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-400">
                         Variation
@@ -513,6 +571,9 @@ export default function AdminOrdersPage() {
                           {guitar.sku}
                         </td>
                         <td className="px-4 py-3 text-sm text-white">{guitar.name}</td>
+                        <td className="px-4 py-3 text-sm text-neutral-400">
+                          {guitar.run ?? "—"}
+                        </td>
                         <td className="px-4 py-3 text-sm text-neutral-300">
                           {guitar.variations.length === 0 ? (
                             <span className="text-neutral-500">Base</span>
@@ -564,7 +625,7 @@ export default function AdminOrdersPage() {
                   </tbody>
                   <tfoot className="border-t border-white/10 bg-white/5">
                     <tr>
-                      <td colSpan={3} className="px-4 py-3 text-right font-semibold text-white">
+                      <td colSpan={4} className="px-4 py-3 text-right font-semibold text-white">
                         Total Quantity:
                       </td>
                       <td className="px-4 py-3 text-right">
