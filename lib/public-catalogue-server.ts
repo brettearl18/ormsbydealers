@@ -26,9 +26,14 @@ export async function loadPublicCatalogueRun19(): Promise<PublicCatalogueGuitar[
       db.collection("prices").doc(docSnap.id).get(),
     ]);
 
-    const availability = availabilitySnap.exists
+    const availabilityData = availabilitySnap.exists
       ? availabilitySnap.data()
-      : { state: "PREORDER" as AvailabilityState, qtyAvailable: 0, qtyAllocated: 0 };
+      : null;
+    const availability = availabilityData ?? {
+      state: "PREORDER" as AvailabilityState,
+      qtyAvailable: 0,
+      qtyAllocated: 0,
+    };
 
     const prices = pricesSnap.exists ? (pricesSnap.data() as PricesDoc) : null;
     const baseRrp = getRRPForVariant(

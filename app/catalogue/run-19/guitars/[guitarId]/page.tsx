@@ -127,7 +127,7 @@ export default function PublicCatalogueGuitarPage({
 
         <div className="grid gap-8 lg:grid-cols-2">
           <div>
-            <ImageCarousel images={displayImages} alt={guitar.name} />
+            <ImageCarousel images={displayImages} name={guitar.name} />
           </div>
 
           <div className="space-y-6">
