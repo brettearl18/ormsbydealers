@@ -5,6 +5,25 @@ import type { FxRatesDoc } from "@/lib/types";
  * Loads FX for dealer UI: tries live rates via our API (Frankfurter),
  * then falls back to Firestore `fxRates/latest` if the network fails.
  */
+/** Public pages: live Frankfurter rates only (no Firestore fallback). */
+export async function fetchPublicFxRates(): Promise<FxRatesDoc | null> {
+  try {
+    const res = await fetch("/api/fx/latest", { cache: "no-store" });
+    if (!res.ok) throw new Error("fx api failed");
+    const data = (await res.json()) as FxRatesDoc & { error?: string };
+    if (data.error || !data.rates || typeof data.rates !== "object") {
+      throw new Error("invalid fx response");
+    }
+    return {
+      base: data.base,
+      rates: data.rates,
+      asOf: data.asOf,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchDealerFxRates(db: Firestore): Promise<FxRatesDoc | null> {
   try {
     const res = await fetch("/api/fx/latest", { cache: "no-store" });

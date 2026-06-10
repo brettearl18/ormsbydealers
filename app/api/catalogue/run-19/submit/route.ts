@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { callCloudFunction } from "@/lib/public-catalogue-server";
-import type { PublicCatalogueContact } from "@/lib/public-catalogue";
+import type { CatalogueAudience, PublicCatalogueContact } from "@/lib/public-catalogue";
 
 interface SubmitBody {
+  catalogueAudience?: CatalogueAudience;
   company: string;
   contactName: string;
   email: string;

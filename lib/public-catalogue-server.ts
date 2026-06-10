@@ -2,7 +2,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import type { AvailabilityState, GuitarDoc, GuitarOption, PricesDoc } from "@/lib/types";
 import { getDealerPriceFromRRP, getRRPForVariant } from "@/lib/pricing";
 import {
-  PUBLIC_CATALOGUE_DISCOUNT,
+  PUBLIC_CATALOGUE_DEALER_DISCOUNT,
   PUBLIC_CATALOGUE_RUN,
   type PublicCatalogueGuitar,
 } from "@/lib/public-catalogue";
@@ -11,7 +11,9 @@ function normalizeRun(run: string | undefined): string {
   return (run ?? "").trim().toLowerCase();
 }
 
-export async function loadPublicCatalogueRun19(): Promise<PublicCatalogueGuitar[]> {
+export async function loadPublicCatalogueRun19(
+  discountPercent = PUBLIC_CATALOGUE_DEALER_DISCOUNT,
+): Promise<PublicCatalogueGuitar[]> {
   const db = getAdminDb();
   const snap = await db.collection("guitars").where("status", "==", "ACTIVE").get();
   const guitars: PublicCatalogueGuitar[] = [];
@@ -40,10 +42,10 @@ export async function loadPublicCatalogueRun19(): Promise<PublicCatalogueGuitar[
       prices,
       (guitar.options ?? null) as GuitarOption[] | null,
       null,
-      PUBLIC_CATALOGUE_DISCOUNT,
+      discountPercent,
     );
     const baseDealerPrice =
-      baseRrp != null ? getDealerPriceFromRRP(baseRrp, PUBLIC_CATALOGUE_DISCOUNT) : null;
+      baseRrp != null ? getDealerPriceFromRRP(baseRrp, discountPercent) : null;
 
     guitars.push({
       id: docSnap.id,
@@ -64,7 +66,7 @@ export async function loadPublicCatalogueRun19(): Promise<PublicCatalogueGuitar[
       },
       pricing: {
         currency: "AUD",
-        discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+        discountPercent,
         rrp: baseRrp,
         dealerPrice: baseDealerPrice,
       },

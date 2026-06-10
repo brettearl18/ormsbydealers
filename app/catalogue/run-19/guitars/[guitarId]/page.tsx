@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState, use } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
 import { AvailabilityBadge } from "@/components/guitars/AvailabilityBadge";
 import { PriceTag } from "@/components/guitars/PriceTag";
 import { SpecTable } from "@/components/guitars/SpecTable";
 import { ImageCarousel } from "@/components/guitars/ImageCarousel";
 import { PublicCatalogueConfigureWizard } from "@/components/catalogue/PublicCatalogueConfigureWizard";
+import { useCatalogueAudience } from "@/lib/public-catalogue-context";
 import {
-  PUBLIC_CATALOGUE_DISCOUNT,
   PUBLIC_CATALOGUE_RUN,
+  findCatalogueOption,
   type PublicCatalogueGuitar,
 } from "@/lib/public-catalogue";
 import type { PricesDoc } from "@/lib/types";
@@ -22,6 +24,9 @@ export default function PublicCatalogueGuitarPage({
   params: Promise<{ guitarId: string }>;
 }) {
   const { guitarId } = use(params);
+  const searchParams = useSearchParams();
+  const presetColour = searchParams.get("colour")?.trim() || undefined;
+  const { audience, discountPercent, basePath } = useCatalogueAudience();
   const [guitar, setGuitar] = useState<PublicCatalogueGuitar | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +38,10 @@ export default function PublicCatalogueGuitarPage({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/catalogue/run-19", { cache: "no-store" });
+        const res = await fetch(
+          `/api/catalogue/run-19?audience=${encodeURIComponent(audience)}`,
+          { cache: "no-store" },
+        );
         if (!res.ok) throw new Error("fetch failed");
         const data = (await res.json()) as { guitars: PublicCatalogueGuitar[] };
         const match = (data.guitars ?? []).find((g) => g.id === guitarId);
@@ -54,7 +62,7 @@ export default function PublicCatalogueGuitarPage({
     return () => {
       cancelled = true;
     };
-  }, [guitarId]);
+  }, [guitarId, audience]);
 
   const displayImages = useMemo(() => {
     if (!guitar) return [];
@@ -79,17 +87,35 @@ export default function PublicCatalogueGuitarPage({
     };
   }, [guitar]);
 
+  const colourOption = guitar ? findCatalogueOption(guitar.options, "colour") : undefined;
+  const presetColourLabel =
+    presetColour && colourOption
+      ? colourOption.values.find((v) => v.valueId === presetColour)?.label
+      : undefined;
+
+  useEffect(() => {
+    if (!guitar || !presetColour || !colourOption) return;
+    if (colourOption.values.some((v) => v.valueId === presetColour)) {
+      setPreviewOptions({ [colourOption.optionId]: presetColour });
+    }
+  }, [guitar, presetColour, colourOption]);
+
+  const displayTitle =
+    presetColourLabel && guitar
+      ? `${guitar.name.replace(/\s*\(Run \d+\)\s*/i, "").trim()} — ${presetColourLabel}`
+      : guitar?.name;
+
   const baseDealerPrice = useMemo(() => {
     if (!guitar || !pricesDoc) return null;
     const variantRrp = getRRPForVariant(
       pricesDoc,
       guitar.options,
       null,
-      PUBLIC_CATALOGUE_DISCOUNT,
+      discountPercent,
     );
     if (variantRrp == null) return null;
-    return getDealerPriceFromRRP(variantRrp, PUBLIC_CATALOGUE_DISCOUNT);
-  }, [guitar, pricesDoc]);
+    return getDealerPriceFromRRP(variantRrp, discountPercent);
+  }, [guitar, pricesDoc, discountPercent]);
 
   if (loading) {
     return (
@@ -104,7 +130,7 @@ export default function PublicCatalogueGuitarPage({
       <main className="px-4 py-12 sm:px-6">
         <p className="text-sm text-red-300">{error ?? "Not found"}</p>
         <Link
-          href="/catalogue/run-19"
+          href={basePath}
           className="mt-4 inline-flex items-center gap-2 text-sm text-accent"
         >
           <ArrowLeftIcon className="h-4 w-4" />
@@ -118,7 +144,7 @@ export default function PublicCatalogueGuitarPage({
     <main className="flex flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <Link
-          href="/catalogue/run-19"
+          href={basePath}
           className="inline-flex items-center gap-2 text-sm text-neutral-400 transition hover:text-white"
         >
           <ArrowLeftIcon className="h-4 w-4" />
@@ -135,8 +161,12 @@ export default function PublicCatalogueGuitarPage({
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
                 {guitar.run}
               </p>
-              <h1 className="mt-1 text-3xl font-semibold text-white">{guitar.name}</h1>
-              <p className="mt-1 font-mono text-sm text-neutral-500">{guitar.sku}</p>
+              <h1 className="mt-1 text-3xl font-semibold text-white">{displayTitle}</h1>
+              <p className="mt-1 font-mono text-sm text-neutral-500">
+                {presetColour && colourOption
+                  ? `${guitar.sku}${colourOption.values.find((v) => v.valueId === presetColour)?.skuSuffix ?? ""}`
+                  : guitar.sku}
+              </p>
               {guitar.etaDelivery && (
                 <p className="mt-2 text-sm text-neutral-400">{guitar.etaDelivery}</p>
               )}
@@ -161,7 +191,7 @@ export default function PublicCatalogueGuitarPage({
               <div className="flex items-baseline gap-3">
                 <PriceTag price={baseDealerPrice} currency="AUD" />
                 <span className="text-sm font-medium text-accent">
-                  {PUBLIC_CATALOGUE_DISCOUNT}% off
+                  {discountPercent}% off
                 </span>
               </div>
             </div>
@@ -170,11 +200,14 @@ export default function PublicCatalogueGuitarPage({
               guitar={guitar}
               pricesDoc={pricesDoc}
               displayImages={displayImages}
+              presetColourValueId={
+                presetColourLabel ? presetColour : undefined
+              }
               onOptionsChange={setPreviewOptions}
             />
 
             <Link
-              href="/catalogue/run-19#your-order"
+              href={`${basePath}#your-order`}
               className="block text-center text-sm text-neutral-400 transition hover:text-accent"
             >
               Review full order →

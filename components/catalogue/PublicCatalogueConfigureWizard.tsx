@@ -5,17 +5,15 @@ import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
 import { CheckCircleIcon } from "@heroicons/react/24/outline";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { useCatalogueAudience } from "@/lib/public-catalogue-context";
 import {
-  PUBLIC_CATALOGUE_DISCOUNT,
-  type PublicCatalogueCartItem,
   type PublicCatalogueGuitar,
+  addToPublicCatalogueCart,
   buildOptionSummary,
   buildVariantSku,
-  cartItemKey,
-  readPublicCatalogueCart,
+  findCatalogueOption,
 } from "@/lib/public-catalogue";
-import { writePublicCatalogueCartAndNotify } from "@/components/catalogue/PublicCatalogueOrderBar";
-import type { GuitarOption, PricesDoc } from "@/lib/types";
+import type { PricesDoc } from "@/lib/types";
 
 const STEPS = [
   { id: 1, title: "Colour", key: "colour" as const },
@@ -23,23 +21,12 @@ const STEPS = [
   { id: 3, title: "Amount", key: "amount" as const },
 ];
 
-function findOption(
-  options: GuitarOption[] | undefined,
-  kind: "colour" | "strings",
-): GuitarOption | undefined {
-  if (!options?.length) return undefined;
-  const byId = options.find((o) => o.optionId.toLowerCase() === kind);
-  if (byId) return byId;
-  const byLabel = options.find((o) =>
-    o.label.toLowerCase().includes(kind === "colour" ? "colour" : "string"),
-  );
-  return byLabel;
-}
-
 interface Props {
   guitar: PublicCatalogueGuitar;
   pricesDoc: PricesDoc | null;
   displayImages: string[];
+  /** Pre-selected from catalogue grid (?colour=valueId). Skips colour step. */
+  presetColourValueId?: string;
   /** Updates hero image when colour / options change during the wizard. */
   onOptionsChange?: (options: Record<string, string>) => void;
 }
@@ -48,16 +35,35 @@ export function PublicCatalogueConfigureWizard({
   guitar,
   pricesDoc,
   displayImages,
+  presetColourValueId,
   onOptionsChange,
 }: Props) {
-  const [step, setStep] = useState(1);
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const { audience, discountPercent } = useCatalogueAudience();
+  const colourOption = findCatalogueOption(guitar.options, "colour");
+  const stringsOption = findCatalogueOption(guitar.options, "strings");
+  const colourLocked = Boolean(
+    presetColourValueId &&
+      colourOption?.values.some((v) => v.valueId === presetColourValueId),
+  );
+
+  const [step, setStep] = useState(colourLocked ? 2 : 1);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
+    if (colourLocked && colourOption && presetColourValueId) {
+      return { [colourOption.optionId]: presetColourValueId };
+    }
+    return {};
+  });
   const [quantity, setQuantity] = useState(1);
   const [showAddedModal, setShowAddedModal] = useState(false);
   const [lastAddedSummary, setLastAddedSummary] = useState("");
 
-  const colourOption = findOption(guitar.options, "colour");
-  const stringsOption = findOption(guitar.options, "strings");
+  const presetColourLabel = colourLocked
+    ? colourOption?.values.find((v) => v.valueId === presetColourValueId)?.label
+    : undefined;
+
+  const visibleSteps = colourLocked
+    ? STEPS.filter((s) => s.id !== 1)
+    : STEPS;
 
   const colourSelected = colourOption
     ? Boolean(selectedOptions[colourOption.optionId])
@@ -74,17 +80,25 @@ export function PublicCatalogueConfigureWizard({
       pricesDoc,
       guitar.options,
       selectedOptions,
-      PUBLIC_CATALOGUE_DISCOUNT,
+      discountPercent,
     );
     if (variantRrp == null) return { dealerPrice: null, lineTotal: null };
-    const dealerPrice = getDealerPriceFromRRP(variantRrp, PUBLIC_CATALOGUE_DISCOUNT);
+    const dealerPrice = getDealerPriceFromRRP(variantRrp, discountPercent);
     return { dealerPrice, lineTotal: dealerPrice * quantity };
-  }, [guitar, pricesDoc, selectedOptions, quantity]);
+  }, [guitar, pricesDoc, selectedOptions, quantity, discountPercent]);
 
   function resetWizard() {
-    setSelectedOptions({});
+    if (colourLocked && colourOption && presetColourValueId) {
+      const locked = { [colourOption.optionId]: presetColourValueId };
+      setSelectedOptions(locked);
+      onOptionsChange?.(locked);
+      setStep(2);
+    } else {
+      setSelectedOptions({});
+      onOptionsChange?.({});
+      setStep(1);
+    }
     setQuantity(1);
-    setStep(1);
   }
 
   function setOption(optionId: string, valueId: string) {
@@ -108,7 +122,8 @@ export function PublicCatalogueConfigureWizard({
   }
 
   function goBack() {
-    setStep((s) => Math.max(1, s - 1));
+    const minStep = colourLocked ? 2 : 1;
+    setStep((s) => Math.max(minStep, s - 1));
   }
 
   function addToOrder() {
@@ -117,7 +132,7 @@ export function PublicCatalogueConfigureWizard({
     if (stringsOption && !stringsSelected) return;
 
     const summary = buildOptionSummary(guitar.options, selectedOptions);
-    const item: PublicCatalogueCartItem = {
+    addToPublicCatalogueCart(audience, {
       guitarId: guitar.id,
       sku: buildVariantSku(guitar.sku, guitar.options, selectedOptions),
       name: guitar.name,
@@ -126,20 +141,7 @@ export function PublicCatalogueConfigureWizard({
       unitPrice: dealerPrice,
       selectedOptions: { ...selectedOptions },
       optionSummary: summary,
-    };
-
-    const key = cartItemKey(item);
-    const existing = readPublicCatalogueCart();
-    const idx = existing.findIndex((e) => cartItemKey(e) === key);
-    if (idx >= 0) {
-      existing[idx] = {
-        ...existing[idx],
-        qty: Math.min(99, existing[idx].qty + quantity),
-      };
-    } else {
-      existing.push(item);
-    }
-    writePublicCatalogueCartAndNotify(existing);
+    });
 
     setLastAddedSummary(
       `${quantity}× ${guitar.name}${summary ? ` — ${summary}` : ""}`,
@@ -165,10 +167,18 @@ export function PublicCatalogueConfigureWizard({
         </p>
 
         {/* Step indicator */}
+        {colourLocked && presetColourLabel && (
+          <div className="mb-4 rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm">
+            <span className="text-neutral-400">Colour: </span>
+            <span className="font-semibold text-white">{presetColourLabel}</span>
+          </div>
+        )}
+
         <div className="mb-6 flex items-center gap-2">
-          {STEPS.map((s, i) => {
+          {visibleSteps.map((s, i) => {
             const done = s.id < step;
             const active = s.id === step;
+            const stepNum = colourLocked ? i + 1 : s.id;
             return (
               <div key={s.id} className="flex flex-1 items-center gap-2">
                 <div
@@ -180,7 +190,7 @@ export function PublicCatalogueConfigureWizard({
                         : "bg-white/10 text-neutral-500"
                   }`}
                 >
-                  {done ? "✓" : s.id}
+                  {done ? "✓" : stepNum}
                 </div>
                 <span
                   className={`hidden text-xs font-medium sm:block ${
@@ -189,7 +199,7 @@ export function PublicCatalogueConfigureWizard({
                 >
                   {s.title}
                 </span>
-                {i < STEPS.length - 1 && (
+                {i < visibleSteps.length - 1 && (
                   <div
                     className={`mx-1 h-px flex-1 ${done ? "bg-emerald-500/40" : "bg-white/10"}`}
                   />
@@ -200,7 +210,7 @@ export function PublicCatalogueConfigureWizard({
         </div>
 
         {/* Step content */}
-        {step === 1 && (
+        {step === 1 && !colourLocked && (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-white">Step 1 — Choose colour</h3>
             {colourOption ? (
@@ -217,7 +227,9 @@ export function PublicCatalogueConfigureWizard({
 
         {step === 2 && (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-white">Step 2 — Choose strings</h3>
+            <h3 className="text-lg font-semibold text-white">
+              {colourLocked ? "Step 1" : "Step 2"} — Choose strings
+            </h3>
             {stringsOption ? (
               <OptionSelector
                 option={stringsOption}
@@ -232,7 +244,9 @@ export function PublicCatalogueConfigureWizard({
 
         {step === 3 && (
           <div className="space-y-5">
-            <h3 className="text-lg font-semibold text-white">Step 3 — Amount</h3>
+            <h3 className="text-lg font-semibold text-white">
+              {colourLocked ? "Step 2" : "Step 3"} — Amount
+            </h3>
 
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-neutral-300">
               <p className="font-medium text-white">{guitar.name}</p>
@@ -243,7 +257,7 @@ export function PublicCatalogueConfigureWizard({
               )}
               {dealerPrice != null && (
                 <p className="mt-2 text-accent">
-                  {formatAud(dealerPrice)} each · {PUBLIC_CATALOGUE_DISCOUNT}% off RRP
+                  {formatAud(dealerPrice)} each · {discountPercent}% off RRP
                 </p>
               )}
             </div>

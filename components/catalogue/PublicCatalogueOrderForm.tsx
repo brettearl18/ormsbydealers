@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  PUBLIC_CATALOGUE_DISCOUNT,
-  type PublicCatalogueCartItem,
-  type PublicCatalogueContact,
-} from "@/lib/public-catalogue";
+import { useCatalogueAudience } from "@/lib/public-catalogue-context";
+import type { PublicCatalogueCartItem, PublicCatalogueContact } from "@/lib/public-catalogue";
 
 interface Props {
   items: PublicCatalogueCartItem[];
@@ -22,6 +19,7 @@ export function PublicCatalogueOrderForm({
   onContactChange,
   onSuccess,
 }: Props) {
+  const { audience, discountPercent } = useCatalogueAudience();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -56,6 +54,7 @@ export function PublicCatalogueOrderForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          catalogueAudience: audience,
           company: contact.company.trim(),
           contactName: contact.contactName.trim(),
           email: contact.email.trim(),
@@ -253,7 +252,7 @@ export function PublicCatalogueOrderForm({
       </button>
       <p className="text-center text-[11px] text-neutral-500">
         Your request is emailed to Ormsby. No portal login required. Prices shown are{" "}
-        {PUBLIC_CATALOGUE_DISCOUNT}% off RRP (AUD).
+        {discountPercent}% off RRP (AUD).
       </p>
     </form>
   );

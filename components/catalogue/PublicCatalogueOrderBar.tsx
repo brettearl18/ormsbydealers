@@ -2,64 +2,52 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
 import { ShoppingBagIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { PublicCatalogueFxPanel } from "@/components/catalogue/PublicCatalogueFxPanel";
+import { PublicCatalogueOrderList } from "@/components/catalogue/PublicCatalogueOrderList";
+import { useCatalogueAudience } from "@/lib/public-catalogue-context";
 import {
   readPublicCatalogueCart,
   writePublicCatalogueCart,
-  PUBLIC_CATALOGUE_CART_KEY,
-  PUBLIC_CATALOGUE_DISCOUNT,
+  notifyPublicCatalogueCartUpdated,
   type PublicCatalogueCartItem,
   cartItemKey,
 } from "@/lib/public-catalogue";
-import { PublicCatalogueOrderList } from "@/components/catalogue/PublicCatalogueOrderList";
 
-export const PUBLIC_CATALOGUE_CART_EVENT = "public-catalogue-cart-updated";
-
-export function notifyPublicCatalogueCartUpdated() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(PUBLIC_CATALOGUE_CART_EVENT));
-}
-
-/** Call after writing cart so other tabs/components refresh. */
 export function writePublicCatalogueCartAndNotify(
+  audience: import("@/lib/public-catalogue").CatalogueAudience,
   items: PublicCatalogueCartItem[],
 ) {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(PUBLIC_CATALOGUE_CART_KEY, JSON.stringify(items));
-  notifyPublicCatalogueCartUpdated();
+  writePublicCatalogueCart(audience, items);
+  notifyPublicCatalogueCartUpdated(audience);
 }
 
 export function PublicCatalogueOrderBar() {
-  const pathname = usePathname();
+  const { audience, discountPercent, basePath, audienceLabel } = useCatalogueAudience();
   const [items, setItems] = useState<PublicCatalogueCartItem[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   function refresh() {
-    setItems(readPublicCatalogueCart());
+    setItems(readPublicCatalogueCart(audience));
   }
 
   useEffect(() => {
     refresh();
-    const onUpdate = () => refresh();
-    window.addEventListener(PUBLIC_CATALOGUE_CART_EVENT, onUpdate);
-    window.addEventListener("storage", onUpdate);
-    return () => {
-      window.removeEventListener(PUBLIC_CATALOGUE_CART_EVENT, onUpdate);
-      window.removeEventListener("storage", onUpdate);
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ audience?: string }>).detail;
+      if (detail?.audience && detail.audience !== audience) return;
+      refresh();
     };
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [pathname]);
+    window.addEventListener("public-catalogue-cart-updated", onUpdate);
+    return () => window.removeEventListener("public-catalogue-cart-updated", onUpdate);
+  }, [audience]);
 
   const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
   const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0);
 
   function persist(next: PublicCatalogueCartItem[]) {
-    writePublicCatalogueCartAndNotify(next);
+    writePublicCatalogueCartAndNotify(audience, next);
     setItems(next);
   }
 
@@ -120,11 +108,7 @@ export function PublicCatalogueOrderBar() {
         </div>
       </div>
 
-      <Dialog
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        className="relative z-50"
-      >
+      <Dialog open={drawerOpen} onClose={() => setDrawerOpen(false)} className="relative z-50">
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" aria-hidden />
         <div className="fixed inset-0 flex items-end justify-center sm:items-center sm:p-4">
           <DialogPanel className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-neutral-900 shadow-2xl sm:rounded-2xl">
@@ -155,9 +139,12 @@ export function PublicCatalogueOrderBar() {
                 <span className="text-sm text-neutral-400">Subtotal (AUD)</span>
                 <span className="text-lg font-bold text-white">{formatAud(subtotal)}</span>
               </div>
-              <p className="mb-4 text-center text-[11px] text-neutral-500">
-                {PUBLIC_CATALOGUE_DISCOUNT}% dealer discount on RRP
+              <p className="mb-3 text-center text-[11px] text-neutral-500">
+                {discountPercent}% {audienceLabel.toLowerCase()} discount on RRP
               </p>
+              <div className="mb-4 border-t border-white/10 pt-3">
+                <PublicCatalogueFxPanel amountAud={subtotal} compact />
+              </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
@@ -167,7 +154,7 @@ export function PublicCatalogueOrderBar() {
                   Add more guitars
                 </button>
                 <Link
-                  href="/catalogue/run-19#submit-order"
+                  href={`${basePath}#submit-order`}
                   onClick={() => setDrawerOpen(false)}
                   className="flex-1 rounded-xl bg-accent py-3 text-center text-sm font-bold text-black transition hover:bg-accent-soft"
                 >

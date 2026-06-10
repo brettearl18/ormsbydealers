@@ -957,10 +957,29 @@ export const getDealerSetupLink = functions.https.onCall(
   },
 );
 
-/** Public dealer catalogue — Run 19 only, fixed 40% off RRP. */
+/** Public catalogue — Run 19 only; dealer 40% / distributor 50% off RRP. */
 const PUBLIC_CATALOGUE_RUN = "Run 19";
-const PUBLIC_CATALOGUE_DISCOUNT = 40;
+const PUBLIC_CATALOGUE_DEALER_DISCOUNT = 40;
+const PUBLIC_CATALOGUE_DISTRIBUTOR_DISCOUNT = 50;
 const PUBLIC_CATALOGUE_FALLBACK_EMAIL = "dealers@ormsbyguitars.com";
+
+type CatalogueAudience = "dealer" | "distributor";
+
+function catalogueDiscountForAudience(audience: CatalogueAudience): number {
+  return audience === "distributor"
+    ? PUBLIC_CATALOGUE_DISTRIBUTOR_DISCOUNT
+    : PUBLIC_CATALOGUE_DEALER_DISCOUNT;
+}
+
+function parseCatalogueAudience(value: unknown): CatalogueAudience {
+  return value === "distributor" ? "distributor" : "dealer";
+}
+
+function catalogueBasePath(audience: CatalogueAudience): string {
+  return audience === "distributor"
+    ? "/catalogue/run-19/distributor"
+    : "/catalogue/run-19";
+}
 
 function normalizeRunLabel(run: string | undefined): string {
   return (run ?? "").trim().toLowerCase();
@@ -1028,7 +1047,9 @@ function formatAud(amount: number): string {
   return `${sign}A$${withCommas}.${dec}`;
 }
 
-async function loadPublicCatalogueGuitars() {
+async function loadPublicCatalogueGuitars(
+  discountPercent = PUBLIC_CATALOGUE_DEALER_DISCOUNT,
+) {
   const snap = await db.collection("guitars").where("status", "==", "ACTIVE").get();
   const guitars: Array<Record<string, unknown>> = [];
 
@@ -1067,10 +1088,10 @@ async function loadPublicCatalogueGuitars() {
       prices as { rrp?: number } | null,
       guitar.options ?? null,
       null,
-      PUBLIC_CATALOGUE_DISCOUNT,
+      discountPercent,
     );
     const baseDealerPrice =
-      baseRrp != null ? dealerPriceFromRrp(baseRrp, PUBLIC_CATALOGUE_DISCOUNT) : null;
+      baseRrp != null ? dealerPriceFromRrp(baseRrp, discountPercent) : null;
 
     guitars.push({
       id: docSnap.id,
@@ -1085,7 +1106,7 @@ async function loadPublicCatalogueGuitars() {
       availability,
       pricing: {
         currency: "AUD",
-        discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+        discountPercent,
         rrp: baseRrp,
         dealerPrice: baseDealerPrice,
       },
@@ -1099,14 +1120,18 @@ async function loadPublicCatalogueGuitars() {
 }
 
 /**
- * Public catalogue data for Run 19 (no auth). Prices are RRP with 40% dealer discount.
+ * Public catalogue data for Run 19 (no auth). Prices are RRP with dealer/distributor discount.
  */
-export const getPublicCatalogueRun19 = functions.https.onCall(async () => {
+export const getPublicCatalogueRun19 = functions.https.onCall(
+  async (data?: { audience?: CatalogueAudience }) => {
   try {
-    const guitars = await loadPublicCatalogueGuitars();
+    const audience = parseCatalogueAudience(data?.audience);
+    const discountPercent = catalogueDiscountForAudience(audience);
+    const guitars = await loadPublicCatalogueGuitars(discountPercent);
     return {
       run: PUBLIC_CATALOGUE_RUN,
-      discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+      audience,
+      discountPercent,
       currency: "AUD",
       guitars,
     };
@@ -1126,6 +1151,7 @@ interface PublicCatalogueLineInput {
 }
 
 interface SubmitPublicCatalogueOrderRequest {
+  catalogueAudience?: CatalogueAudience;
   company: string;
   contactName: string;
   email: string;
@@ -1179,7 +1205,12 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
       );
     }
 
-    const allowedGuitars = await loadPublicCatalogueGuitars();
+    const audience = parseCatalogueAudience(data?.catalogueAudience);
+    const discountPercent = catalogueDiscountForAudience(audience);
+    const audienceLabel = audience === "distributor" ? "Distributor" : "Dealer";
+    const cataloguePath = catalogueBasePath(audience);
+
+    const allowedGuitars = await loadPublicCatalogueGuitars(discountPercent);
     const allowedById = new Map(allowedGuitars.map((g) => [String(g.id), g]));
 
     const validatedLines: Array<{
@@ -1238,7 +1269,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
         prices as { rrp?: number } | null,
         options,
         selectedOptions,
-        PUBLIC_CATALOGUE_DISCOUNT,
+        discountPercent,
       );
       if (rrp == null) {
         throw new functions.https.HttpsError(
@@ -1247,7 +1278,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
         );
       }
 
-      const unitPrice = dealerPriceFromRrp(rrp, PUBLIC_CATALOGUE_DISCOUNT);
+      const unitPrice = dealerPriceFromRrp(rrp, discountPercent);
       const sku = buildVariantSku(String(guitar.sku), options, selectedOptions);
       const optionSummary = options
         .map((opt) => {
@@ -1295,7 +1326,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
     if (ship?.country?.trim()) shipLines.push(ship.country.trim());
 
     const internalBody = [
-      `Run 19 Dealer Catalogue — order request`,
+      `Run 19 ${audienceLabel} Catalogue — order request`,
       `========================================`,
       ``,
       `Company: ${company}`,
@@ -1307,7 +1338,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
       ``,
       shipLines.length ? `Ship to:\n${shipLines.map((l) => `  ${l}`).join("\n")}` : "",
       ``,
-      `Pricing: ${PUBLIC_CATALOGUE_DISCOUNT}% off RRP (AUD dealer price)`,
+      `Pricing: ${discountPercent}% off RRP (AUD ${audienceLabel.toLowerCase()} price)`,
       ``,
       `Line items:`,
       lineText,
@@ -1315,7 +1346,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
       `Subtotal (AUD): ${formatAud(subtotal)}`,
       notes ? `\nNotes:\n${notes}` : "",
       ``,
-      `Submitted via public catalogue: ${getPortalBaseUrl()}/catalogue/run-19`,
+      `Submitted via public catalogue: ${getPortalBaseUrl()}${cataloguePath}`,
       `Time: ${new Date().toISOString()}`,
     ]
       .filter((line) => line !== "")
@@ -1327,7 +1358,7 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
       `Thanks for your Run 19 catalogue order request for ${company}.`,
       `Our team will review it and get back to you shortly.`,
       ``,
-      `Summary (${PUBLIC_CATALOGUE_DISCOUNT}% dealer discount on RRP):`,
+      `Summary (${discountPercent}% ${audienceLabel.toLowerCase()} discount on RRP):`,
       lineText,
       ``,
       `Subtotal (AUD): ${formatAud(subtotal)}`,
@@ -1338,7 +1369,8 @@ export const submitPublicCatalogueOrder = functions.https.onCall(
 
     await db.collection("publicCatalogueEnquiries").add({
       catalogueRun: PUBLIC_CATALOGUE_RUN,
-      discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+      catalogueAudience: audience,
+      discountPercent,
       status: "NEW",
       company,
       contactName,

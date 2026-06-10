@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
 import { loadPublicCatalogueRun19 } from "@/lib/public-catalogue-server";
 import {
-  PUBLIC_CATALOGUE_DISCOUNT,
+  getCatalogueDiscount,
+  parseCatalogueAudience,
   PUBLIC_CATALOGUE_RUN,
 } from "@/lib/public-catalogue";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const guitars = await loadPublicCatalogueRun19();
+    const { searchParams } = new URL(request.url);
+    const audience = parseCatalogueAudience(searchParams.get("audience"));
+    const discountPercent = getCatalogueDiscount(audience);
+    const guitars = await loadPublicCatalogueRun19(discountPercent);
     return NextResponse.json(
       {
         run: PUBLIC_CATALOGUE_RUN,
-        discountPercent: PUBLIC_CATALOGUE_DISCOUNT,
+        audience,
+        discountPercent,
         currency: "AUD",
         guitars,
       },

@@ -1,19 +1,20 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import { PublicCatalogueOrderBar } from "@/components/catalogue/PublicCatalogueOrderBar";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Run 19 Dealer Catalogue | Ormsby Guitars",
-  description:
-    "Public Run 19 dealer catalogue — configure guitars and submit your order by email at 40% off RRP.",
-};
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { PublicCatalogueOrderBar } from "@/components/catalogue/PublicCatalogueOrderBar";
+import { CatalogueAudienceProvider } from "@/lib/public-catalogue-context";
+import { catalogueAudienceFromPath } from "@/lib/public-catalogue";
 
 export default function Run19CatalogueLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const audience = catalogueAudienceFromPath(pathname);
+
   return (
-    <>
+    <CatalogueAudienceProvider audience={audience}>
       {children}
       <PublicCatalogueOrderBar />
       <div className="h-20" aria-hidden />
-    </>
+    </CatalogueAudienceProvider>
   );
 }
