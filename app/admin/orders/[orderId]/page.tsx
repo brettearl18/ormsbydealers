@@ -856,8 +856,29 @@ export default function AdminOrderDetailPage({
           <div className="lg:col-span-2 space-y-6">
             {/* Order Items */}
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-              <h2 className="mb-4 text-lg font-semibold text-white">Order Items</h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-white">Order Items</h2>
+                <Link
+                  href={`/admin/orders/${orderId}/add`}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-soft"
+                >
+                  Add guitar
+                </Link>
+              </div>
               <div className="space-y-4">
+                {orderLines.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-white/15 bg-black/20 px-5 py-8 text-center">
+                    <p className="text-sm text-neutral-400">
+                      No guitars on this order yet.
+                    </p>
+                    <Link
+                      href={`/admin/orders/${orderId}/add`}
+                      className="mt-4 inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-soft"
+                    >
+                      Add a guitar
+                    </Link>
+                  </div>
+                )}
                 {orderLines.map((line) => {
                   const guitar = guitarsMap.get(line.guitarId);
 
