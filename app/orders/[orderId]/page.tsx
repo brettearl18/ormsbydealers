@@ -18,6 +18,7 @@ import {
 import { db } from "@/lib/firebase";
 import {
   AccountDoc,
+  AvailabilityDoc,
   GuitarDoc,
   OrderAddRequestDoc,
   OrderDoc,
@@ -30,6 +31,7 @@ import Link from "next/link";
 import { OrderFxEstimates } from "@/components/orders/OrderFxEstimates";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import { OptionSelector } from "@/components/guitars/OptionSelector";
 import { fetchActiveGuitarDocsForPicker } from "@/lib/fetch-active-guitars";
 import { resolveLineOptionLabels } from "@/lib/order-line-options";
@@ -84,6 +86,8 @@ export default function OrderDetailPage({
   const [selectedAddOptions, setSelectedAddOptions] = useState<Record<string, string>>({});
   const [addQty, setAddQty] = useState(1);
   const [selectedAddPrices, setSelectedAddPrices] = useState<PricesDoc | null>(null);
+  const [selectedAddAvailability, setSelectedAddAvailability] =
+    useState<AvailabilityDoc | null>(null);
   const [addSubmitting, setAddSubmitting] = useState(false);
 
   // --- Remove guitar section state ---
@@ -237,10 +241,11 @@ export default function OrderDetailPage({
     };
   }, [effectiveAccountId, previewReadOnly]);
 
-  // Load prices for the currently selected guitar to compute dealer unit prices.
+  // Load prices + availability for the currently selected guitar.
   useEffect(() => {
     if (!selectedAddGuitarId) {
       setSelectedAddPrices(null);
+      setSelectedAddAvailability(null);
       return;
     }
 
@@ -248,12 +253,23 @@ export default function OrderDetailPage({
     let cancelled = false;
     async function run() {
       try {
-        const snap = await getDoc(doc(db, "prices", selectedId));
+        const [priceSnap, availabilitySnap] = await Promise.all([
+          getDoc(doc(db, "prices", selectedId)),
+          getDoc(doc(db, "availability", selectedId)),
+        ]);
         if (cancelled) return;
-        setSelectedAddPrices(snap.exists() ? (snap.data() as PricesDoc) : null);
+        setSelectedAddPrices(priceSnap.exists() ? (priceSnap.data() as PricesDoc) : null);
+        setSelectedAddAvailability(
+          availabilitySnap.exists()
+            ? (availabilitySnap.data() as AvailabilityDoc)
+            : null,
+        );
       } catch (err) {
         console.error("Error loading selected guitar prices:", err);
-        if (!cancelled) setSelectedAddPrices(null);
+        if (!cancelled) {
+          setSelectedAddPrices(null);
+          setSelectedAddAvailability(null);
+        }
       }
     }
 
@@ -398,6 +414,10 @@ export default function OrderDetailPage({
   async function handleAddToOrder() {
     if (!order || !selectedAddGuitar || !selectedAddPrices) return;
     if (!canDirectModify) return;
+    if (!isAvailabilityOrderable(selectedAddAvailability?.state)) {
+      alert("This guitar is closed for ordering.");
+      return;
+    }
     if (!addOptionsValid) {
       alert("Please select all required options.");
       return;
@@ -453,6 +473,10 @@ export default function OrderDetailPage({
   async function handleRequestAddToOrder() {
     if (!order || !selectedAddGuitar || !selectedAddPrices) return;
     if (!user?.accountId) return;
+    if (!isAvailabilityOrderable(selectedAddAvailability?.state)) {
+      alert("This guitar is closed for ordering.");
+      return;
+    }
     if (!addOptionsValid) {
       alert("Please select all required options.");
       return;
@@ -770,6 +794,7 @@ export default function OrderDetailPage({
     addOptionsValid &&
     addUnitPrice != null &&
     addQty > 0 &&
+    isAvailabilityOrderable(selectedAddAvailability?.state) &&
     (canDirectModify || isInProductionFlow);
 
   async function handleDownloadOrderPdf() {

@@ -78,7 +78,7 @@
     "_omitWhenGenerating": true,
     "description": "Stock availability per guitar. Do not generate—availability will be loaded later.",
     "fields": {
-      "state": { "type": "string", "required": true, "enum": ["IN_STOCK", "PREORDER", "BATCH"] },
+      "state": { "type": "string", "required": true, "enum": ["IN_STOCK", "PREORDER", "BATCH", "CLOSED"] },
       "qtyAvailable": { "type": "number", "required": true },
       "qtyAllocated": { "type": "number", "required": true },
       "etaDate": { "type": "string | null", "format": "ISO 8601" },

@@ -357,6 +357,46 @@ export const submitOrder = functions.https.onCall(async (data: SubmitOrderReques
     }
   }
 
+  // Dealers cannot order CLOSED guitars (admins placing on behalf may still allocate).
+  if (!placedByAdmin) {
+    for (const item of cartItems) {
+      const guitarId =
+        typeof item?.guitarId === "string" ? item.guitarId.trim() : "";
+      if (!guitarId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Each cart item must include a guitarId.",
+        );
+      }
+      const [guitarSnap, availabilitySnap] = await Promise.all([
+        db.collection("guitars").doc(guitarId).get(),
+        db.collection("availability").doc(guitarId).get(),
+      ]);
+      if (!guitarSnap.exists) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `Guitar not found: ${item.name || guitarId}`,
+        );
+      }
+      const guitar = guitarSnap.data() as { status?: string; name?: string };
+      if (guitar.status !== "ACTIVE") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `${guitar.name || item.name || guitarId} is not available to order.`,
+        );
+      }
+      const availabilityState = availabilitySnap.exists
+        ? (availabilitySnap.data() as { state?: string }).state
+        : "PREORDER";
+      if (availabilityState === "CLOSED") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `${guitar.name || item.name || guitarId} is closed for ordering.`,
+        );
+      }
+    }
+  }
+
   // Compute totals
   const subtotal = cartItems.reduce(
     (sum, item) => sum + item.unitPrice * item.qty,

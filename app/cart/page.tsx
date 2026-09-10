@@ -8,8 +8,9 @@ import { useEffect, useState, useMemo } from "react";
 import { CartItemSkeleton } from "@/components/LoadingSkeleton";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PricesDoc, GuitarDoc, AccountDoc, FxRatesDoc } from "@/lib/types";
+import { PricesDoc, GuitarDoc, AccountDoc, FxRatesDoc, AvailabilityDoc } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import { fetchDealerFxRates } from "@/lib/fx-client";
 import { resolveDisplayCurrency } from "@/lib/display-currency";
 import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
@@ -38,6 +39,9 @@ export default function CartPage() {
   const [fxRates, setFxRates] = useState<FxRatesDoc | null>(null);
   const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
+  const [availabilityMap, setAvailabilityMap] = useState<
+    Map<string, AvailabilityDoc>
+  >(new Map());
   const [loadingPrices, setLoadingPrices] = useState(true);
 
   const displayCurrency = resolveDisplayCurrency(account, user);
@@ -81,16 +85,25 @@ export default function CartPage() {
 
         const prices = new Map<string, PricesDoc>();
         const guitars = new Map<string, GuitarDoc>();
+        const availability = new Map<string, AvailabilityDoc>();
         for (const guitarId of uniqueGuitarIds) {
-          const [priceSnap, guitarSnap] = await Promise.all([
+          const [priceSnap, guitarSnap, availabilitySnap] = await Promise.all([
             getDoc(doc(db, "prices", guitarId)),
             getDoc(doc(db, "guitars", guitarId)),
+            getDoc(doc(db, "availability", guitarId)),
           ]);
           if (priceSnap.exists()) prices.set(guitarId, priceSnap.data() as PricesDoc);
           if (guitarSnap.exists()) guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
+          if (availabilitySnap.exists()) {
+            availability.set(
+              guitarId,
+              availabilitySnap.data() as AvailabilityDoc,
+            );
+          }
         }
         setPricesMap(prices);
         setGuitarsMap(guitars);
+        setAvailabilityMap(availability);
       } catch (err) {
         console.error("Error fetching pricing data:", err);
       } finally {
@@ -135,6 +148,14 @@ export default function CartPage() {
   // Display subtotal in dealer currency when FX available
   const displaySubtotal =
     fxRate != null ? currentSubtotal * fxRate : currentSubtotal;
+
+  const closedCartItems = useMemo(() => {
+    return itemsWithCurrentPrices.filter((item) => {
+      const state = availabilityMap.get(item.guitarId)?.state;
+      return state === "CLOSED";
+    });
+  }, [itemsWithCurrentPrices, availabilityMap]);
+  const hasClosedItems = closedCartItems.length > 0;
 
   const estimatedTaxAmount = hasEstimatedTaxSettings(account ?? undefined)
     ? computeEstimatedTaxAmount(displaySubtotal, account?.estimatedTaxPercent)
@@ -406,12 +427,25 @@ export default function CartPage() {
                 </p>
               )}
 
-              <Link
-                href="/checkout"
-                className="block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-black shadow-soft transition-all hover:scale-[1.02] hover:bg-accent-soft hover:shadow-soft hover:shadow-accent/30"
-              >
-                Place order
-              </Link>
+              {hasClosedItems && (
+                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                  Remove closed guitars before ordering:{" "}
+                  {closedCartItems.map((i) => i.name).join(", ")}
+                </p>
+              )}
+
+              {hasClosedItems ? (
+                <span className="block w-full cursor-not-allowed rounded-full bg-neutral-800 px-6 py-3 text-center text-sm font-semibold text-neutral-400">
+                  Place order
+                </span>
+              ) : (
+                <Link
+                  href="/checkout"
+                  className="block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-black shadow-soft transition-all hover:scale-[1.02] hover:bg-accent-soft hover:shadow-soft hover:shadow-accent/30"
+                >
+                  Place order
+                </Link>
+              )}
             </div>
           </div>
         </div>

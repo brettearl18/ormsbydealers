@@ -9,8 +9,9 @@ import { httpsCallable } from "firebase/functions";
 import { functions, db, auth } from "@/lib/firebase";
 import { getIdToken } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { AccountDoc, AdminSettingsDoc, PricesDoc, GuitarDoc } from "@/lib/types";
+import { AccountDoc, AdminSettingsDoc, PricesDoc, GuitarDoc, AvailabilityDoc } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import { resolveDisplayCurrency } from "@/lib/display-currency";
 import {
   computeEstimatedTaxAmount,
@@ -41,6 +42,9 @@ export default function CheckoutPage() {
   const [account, setAccount] = useState<AccountDoc | null>(null);
   const [pricesMap, setPricesMap] = useState<Map<string, PricesDoc>>(new Map());
   const [guitarsMap, setGuitarsMap] = useState<Map<string, GuitarDoc>>(new Map());
+  const [availabilityMap, setAvailabilityMap] = useState<
+    Map<string, AvailabilityDoc>
+  >(new Map());
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -73,16 +77,25 @@ export default function CheckoutPage() {
         const uniqueGuitarIds = Array.from(new Set(items.map((i) => i.guitarId)));
         const prices = new Map<string, PricesDoc>();
         const guitars = new Map<string, GuitarDoc>();
+        const availability = new Map<string, AvailabilityDoc>();
         for (const guitarId of uniqueGuitarIds) {
-          const [priceSnap, guitarSnap] = await Promise.all([
+          const [priceSnap, guitarSnap, availabilitySnap] = await Promise.all([
             getDoc(doc(db, "prices", guitarId)),
             getDoc(doc(db, "guitars", guitarId)),
+            getDoc(doc(db, "availability", guitarId)),
           ]);
           if (priceSnap.exists()) prices.set(guitarId, priceSnap.data() as PricesDoc);
           if (guitarSnap.exists()) guitars.set(guitarId, guitarSnap.data() as GuitarDoc);
+          if (availabilitySnap.exists()) {
+            availability.set(
+              guitarId,
+              availabilitySnap.data() as AvailabilityDoc,
+            );
+          }
         }
         setPricesMap(prices);
         setGuitarsMap(guitars);
+        setAvailabilityMap(availability);
       } catch (err) {
         console.error("Error fetching checkout data:", err);
       } finally {
@@ -124,6 +137,14 @@ export default function CheckoutPage() {
     () => itemsWithPrices.reduce((sum, i) => sum + i.unitPrice * i.qty, 0),
     [itemsWithPrices],
   );
+  const closedCheckoutItems = useMemo(
+    () =>
+      itemsWithPrices.filter(
+        (item) => availabilityMap.get(item.guitarId)?.state === "CLOSED",
+      ),
+    [itemsWithPrices, availabilityMap],
+  );
+  const hasClosedItems = closedCheckoutItems.length > 0;
 
   const checkoutEstimatedTax = hasEstimatedTaxSettings(account ?? undefined)
     ? computeEstimatedTaxAmount(checkoutSubtotal, account?.estimatedTaxPercent)
@@ -230,6 +251,16 @@ export default function CheckoutPage() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+
+    if (hasClosedItems) {
+      setError(
+        `Remove closed guitars before ordering: ${closedCheckoutItems
+          .map((i) => i.name)
+          .join(", ")}`,
+      );
+      setSubmitting(false);
+      return;
+    }
 
     if (!termsAccepted) {
       setWarningMessage(

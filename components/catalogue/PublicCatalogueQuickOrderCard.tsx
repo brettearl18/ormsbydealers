@@ -15,6 +15,7 @@ import {
   buildVariantSku,
   findCatalogueOption,
 } from "@/lib/public-catalogue";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import type { PricesDoc } from "@/lib/types";
 
 interface Props {
@@ -92,10 +93,13 @@ export function PublicCatalogueQuickOrderCard({ variant }: Props) {
   const showSpecs = hasCatalogueSpecs(variant.specs);
 
   const canAdd =
-    dealerPrice != null && (!stringsOption || Boolean(stringsValueId));
+    dealerPrice != null &&
+    isAvailabilityOrderable(variant.availability.state) &&
+    (!stringsOption || Boolean(stringsValueId));
 
   function handleAdd() {
     if (!canAdd || dealerPrice == null) return;
+    if (!isAvailabilityOrderable(variant.availability.state)) return;
 
     addToPublicCatalogueCart(audience, {
       guitarId: variant.guitarId,
@@ -236,7 +240,11 @@ export function PublicCatalogueQuickOrderCard({ variant }: Props) {
             disabled={!canAdd}
             className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-xs font-bold text-black transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {added ? "Added ✓" : "Quick order"}
+            {added
+              ? "Added ✓"
+              : !isAvailabilityOrderable(variant.availability.state)
+                ? "Closed"
+                : "Quick order"}
           </button>
         </div>
       </div>

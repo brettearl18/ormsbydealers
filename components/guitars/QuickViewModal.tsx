@@ -9,6 +9,7 @@ import { useCart } from "@/lib/cart-context";
 import Link from "next/link";
 import { DealerGuitar } from "@/lib/dealer-guitars";
 import type { FxRatesDoc } from "@/lib/types";
+import { isAvailabilityOrderable } from "@/lib/availability";
 
 interface Props {
   guitar: DealerGuitar | null;
@@ -34,6 +35,8 @@ export function QuickViewModal({
 
   if (!guitar) return null;
 
+  const canOrder = isAvailabilityOrderable(guitar.availability.state);
+
   const rate = currency !== "AUD" && fxRates?.rates[currency];
   const displayPrice =
     guitar.price.value != null && rate
@@ -41,7 +44,7 @@ export function QuickViewModal({
       : guitar.price.value;
 
   const onAddToCart = () => {
-    if (guitar.price.value == null) return;
+    if (guitar.price.value == null || !canOrder) return;
     addItem(
       {
         guitarId: guitar.id,
@@ -136,10 +139,10 @@ export function QuickViewModal({
                       <button
                         type="button"
                         onClick={onAddToCart}
-                        disabled={guitar.price.value == null}
+                        disabled={guitar.price.value == null || !canOrder}
                         className="flex-1 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black shadow-soft transition hover:scale-105 hover:bg-accent-soft disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-400"
                       >
-                        Add to cart
+                        {canOrder ? "Add to cart" : "Closed — cannot order"}
                       </button>
                       <Link
                         href={`/dealer/guitars/${guitar.id}`}

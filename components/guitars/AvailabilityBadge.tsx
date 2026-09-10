@@ -10,6 +10,14 @@ export function AvailabilityBadge({ state, etaDate, batchName }: Props) {
   const common =
     "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-wide";
 
+  if (state === "CLOSED") {
+    return (
+      <span className={`${common} bg-neutral-500/25 text-neutral-300`}>
+        Closed
+      </span>
+    );
+  }
+
   if (state === "IN_STOCK") {
     return (
       <span className={`${common} bg-emerald-500/20 text-emerald-400`}>
@@ -35,6 +43,3 @@ export function AvailabilityBadge({ state, etaDate, batchName }: Props) {
     </span>
   );
 }
-
-
-

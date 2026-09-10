@@ -61,7 +61,7 @@ export interface TierDoc {
   order?: number; // Order of tiers (lower numbers = higher priority/volume)
 }
 
-export type AvailabilityState = "IN_STOCK" | "PREORDER" | "BATCH";
+export type AvailabilityState = "IN_STOCK" | "PREORDER" | "BATCH" | "CLOSED";
 
 export interface GuitarSpecs {
   body?: string;

@@ -13,6 +13,7 @@ import {
   buildVariantSku,
   findCatalogueOption,
 } from "@/lib/public-catalogue";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import type { PricesDoc } from "@/lib/types";
 
 const STEPS = [
@@ -128,6 +129,7 @@ export function PublicCatalogueConfigureWizard({
 
   function addToOrder() {
     if (!guitar || dealerPrice == null) return;
+    if (!isAvailabilityOrderable(guitar.availability.state)) return;
     if (colourOption && !colourSelected) return;
     if (stringsOption && !stringsSelected) return;
 
@@ -321,10 +323,15 @@ export function PublicCatalogueConfigureWizard({
             <button
               type="button"
               onClick={addToOrder}
-              disabled={dealerPrice == null}
+              disabled={
+                dealerPrice == null ||
+                !isAvailabilityOrderable(guitar.availability.state)
+              }
               className="ml-auto rounded-xl bg-accent px-6 py-3 text-sm font-bold text-black transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Add to order
+              {!isAvailabilityOrderable(guitar.availability.state)
+                ? "Closed — cannot order"
+                : "Add to order"}
             </button>
           )}
         </div>

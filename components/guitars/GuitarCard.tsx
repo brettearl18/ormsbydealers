@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AvailabilityBadge } from "./AvailabilityBadge";
 import { PriceTag } from "./PriceTag";
 import { AvailabilityState } from "@/lib/types";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import { useCart } from "@/lib/cart-context";
 import { EyeIcon, ShoppingCartIcon } from "@heroicons/react/24/outline";
 
@@ -53,11 +54,12 @@ export function GuitarCard({
   const { addItem } = useCart();
   const cartPrice = unitPriceAud ?? price.value;
   const productHref = detailHref ?? `/dealer/guitars/${id}`;
+  const canOrder = isAvailabilityOrderable(availability.state);
 
   const onAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (cartPrice == null) return;
+    if (cartPrice == null || !canOrder) return;
     addItem(
       {
         guitarId: id,
@@ -108,7 +110,7 @@ export function GuitarCard({
                   <EyeIcon className="h-5 w-5" />
                 </button>
               )}
-              {!hideQuickAdd && (
+              {!hideQuickAdd && canOrder && (
                 <button
                   onClick={onAddToCart}
                   disabled={price.value == null}

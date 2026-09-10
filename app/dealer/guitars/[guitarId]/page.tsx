@@ -14,6 +14,7 @@ import {
   AccountDoc,
 } from "@/lib/types";
 import { getRRPForVariant, getDealerPriceFromRRP } from "@/lib/pricing";
+import { isAvailabilityOrderable } from "@/lib/availability";
 import { TierDoc } from "@/lib/types";
 import { AvailabilityBadge } from "@/components/guitars/AvailabilityBadge";
 import { PriceTag } from "@/components/guitars/PriceTag";
@@ -312,6 +313,10 @@ export default function GuitarDetailPage({
 
   const onAddToCart = () => {
     if (isAdminDealerPreview) {
+      return;
+    }
+    if (!isAvailabilityOrderable(availability?.state)) {
+      alert("This guitar is closed for ordering.");
       return;
     }
     if (effectivePrice.price == null) {
@@ -752,10 +757,18 @@ export default function GuitarDetailPage({
                 Cart is disabled in dealer preview.
               </p>
             )}
+            {!isAdminDealerPreview &&
+              availability &&
+              !isAvailabilityOrderable(availability.state) && (
+              <p className="rounded-lg border border-neutral-500/30 bg-neutral-500/10 px-3 py-2 text-center text-xs text-neutral-200">
+                Pre-sales for this guitar are closed. Dealers cannot add it to an order.
+              </p>
+            )}
             <button
               type="button"
               disabled={
                 isAdminDealerPreview ||
+                !isAvailabilityOrderable(availability?.state) ||
                 effectivePrice.price == null ||
                 !validateOptions() ||
                 addingToCart ||
@@ -788,6 +801,8 @@ export default function GuitarDetailPage({
                   </svg>
                   Adding...
                 </span>
+              ) : !isAvailabilityOrderable(availability?.state) ? (
+                "Closed — cannot order"
               ) : (
                 `Add ${quantity} to cart`
               )}

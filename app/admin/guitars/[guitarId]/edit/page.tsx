@@ -5,9 +5,9 @@ import { GuitarOptionsManager } from "@/components/admin/GuitarOptionsManager";
 import { FormEvent, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { use } from "react";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { GuitarDoc } from "@/lib/types";
+import { AvailabilityDoc, AvailabilityState, GuitarDoc } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeftIcon, EyeIcon } from "@heroicons/react/24/outline";
 
@@ -49,6 +49,19 @@ export default function EditGuitarPage({
     },
     status: "ACTIVE",
   });
+  const [availability, setAvailability] = useState<{
+    state: AvailabilityState;
+    etaDate: string;
+    batchName: string;
+    qtyAvailable: number;
+    qtyAllocated: number;
+  }>({
+    state: "PREORDER",
+    etaDate: "",
+    batchName: "",
+    qtyAvailable: 0,
+    qtyAllocated: 0,
+  });
 
   useEffect(() => {
     fetchGuitar();
@@ -58,7 +71,10 @@ export default function EditGuitarPage({
     setLoading(true);
     try {
       const guitarRef = doc(db, "guitars", guitarId);
-      const guitarSnap = await getDoc(guitarRef);
+      const [guitarSnap, availabilitySnap] = await Promise.all([
+        getDoc(guitarRef),
+        getDoc(doc(db, "availability", guitarId)),
+      ]);
 
       if (!guitarSnap.exists()) {
         setError("Guitar not found");
@@ -77,6 +93,17 @@ export default function EditGuitarPage({
         specs.stringCount = [specs.stringCount];
       }
       setFormData({ ...data, specs });
+
+      if (availabilitySnap.exists()) {
+        const a = availabilitySnap.data() as AvailabilityDoc;
+        setAvailability({
+          state: (a.state as AvailabilityState) || "PREORDER",
+          etaDate: a.etaDate ?? "",
+          batchName: a.batchName ?? "",
+          qtyAvailable: a.qtyAvailable ?? 0,
+          qtyAllocated: a.qtyAllocated ?? 0,
+        });
+      }
     } catch (err) {
       console.error("Error fetching guitar:", err);
       setError("Failed to load guitar");
@@ -130,6 +157,21 @@ export default function EditGuitarPage({
         ...guitarData,
         updatedAt: serverTimestamp(),
       });
+
+      await setDoc(
+        doc(db, "availability", guitarId),
+        {
+          state: availability.state,
+          etaDate: availability.etaDate.trim() || null,
+          batchName:
+            availability.state === "BATCH"
+              ? availability.batchName.trim() || null
+              : null,
+          qtyAvailable: Number(availability.qtyAvailable) || 0,
+          qtyAllocated: Number(availability.qtyAllocated) || 0,
+        },
+        { merge: true },
+      );
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -244,7 +286,74 @@ export default function EditGuitarPage({
                     <option value="ACTIVE">ACTIVE</option>
                     <option value="INACTIVE">INACTIVE</option>
                   </select>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    INACTIVE hides this guitar from dealers entirely.
+                  </p>
                 </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-neutral-300">
+                    Availability *
+                  </label>
+                  <select
+                    value={availability.state}
+                    onChange={(e) =>
+                      setAvailability({
+                        ...availability,
+                        state: e.target.value as AvailabilityState,
+                      })
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-accent/50 focus:bg-white/10"
+                  >
+                    <option value="PREORDER">PREORDER</option>
+                    <option value="IN_STOCK">IN STOCK</option>
+                    <option value="BATCH">BATCH</option>
+                    <option value="CLOSED">CLOSED (dealers cannot order)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    CLOSED keeps the listing visible but blocks dealer pre-sales /
+                    orders.
+                  </p>
+                </div>
+                {(availability.state === "PREORDER" ||
+                  availability.state === "BATCH") && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-neutral-300">
+                      ETA date
+                    </label>
+                    <input
+                      type="date"
+                      value={availability.etaDate ? availability.etaDate.slice(0, 10) : ""}
+                      onChange={(e) =>
+                        setAvailability({
+                          ...availability,
+                          etaDate: e.target.value
+                            ? new Date(e.target.value).toISOString()
+                            : "",
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-accent/50 focus:bg-white/10"
+                    />
+                  </div>
+                )}
+                {availability.state === "BATCH" && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-neutral-300">
+                      Batch name
+                    </label>
+                    <input
+                      type="text"
+                      value={availability.batchName}
+                      onChange={(e) =>
+                        setAvailability({
+                          ...availability,
+                          batchName: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-neutral-500 outline-none transition focus:border-accent/50 focus:bg-white/10"
+                      placeholder="e.g. Batch A"
+                    />
+                  </div>
+                )}
                 <div className="sm:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-neutral-300">
                     Name *
