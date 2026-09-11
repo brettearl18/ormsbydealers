@@ -45,6 +45,23 @@ function runMatches(guitarRun: string | undefined, filter: string): boolean {
   return normalizeRun(guitarRun) === normalizeRun(filter);
 }
 
+function getOrderLineThumbnail(
+  line: OrderLineDoc,
+  guitar: GuitarDoc | undefined,
+): string | null {
+  if (guitar?.options && line.selectedOptions) {
+    for (const option of guitar.options) {
+      const valueId = line.selectedOptions[option.optionId];
+      if (!valueId) continue;
+      const selectedValue = option.values.find((v) => v.valueId === valueId);
+      if (selectedValue?.images?.[0]) return selectedValue.images[0];
+    }
+  }
+  return guitar?.images?.[0] ?? null;
+}
+
+const ORDER_THUMB_LIMIT = 6;
+
 interface GuitarOrderSummary {
   guitarId: string;
   sku: string;
@@ -692,14 +709,27 @@ export default function AdminOrdersPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredOrders.map((order) => (
+            {filteredOrders.map((order) => {
+              const lines = orderLines.get(order.id) || [];
+              const thumbs = lines
+                .map((line) => ({
+                  key: line.id,
+                  name: line.name,
+                  qty: line.qty,
+                  src: getOrderLineThumbnail(line, guitarsMap.get(line.guitarId)),
+                }))
+                .filter((t) => Boolean(t.src));
+              const visibleThumbs = thumbs.slice(0, ORDER_THUMB_LIMIT);
+              const extraCount = thumbs.length - visibleThumbs.length;
+
+              return (
               <Link
                 key={order.id}
                 href={`/admin/orders/${order.id}`}
                 className="group block rounded-2xl border border-white/10 bg-white/5 p-6 transition-all hover:border-accent/30 hover:bg-white/10"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-bold text-white group-hover:text-accent transition-colors">
                         Order #{order.id.slice(0, 8).toUpperCase()}
@@ -760,8 +790,46 @@ export default function AdminOrdersPage() {
                         <span className="font-medium text-white">{order.currency}</span>
                       </div>
                     </div>
+
+                    {visibleThumbs.length > 0 && (
+                      <div className="mt-4 flex items-center gap-2">
+                        <div className="flex -space-x-2">
+                          {visibleThumbs.map((thumb) => (
+                            <div
+                              key={thumb.key}
+                              className="relative h-11 w-11 overflow-hidden rounded-lg border-2 border-neutral-950 bg-neutral-900 shadow-sm"
+                              title={`${thumb.name}${thumb.qty > 1 ? ` ×${thumb.qty}` : ""}`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={thumb.src!}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                              {thumb.qty > 1 && (
+                                <span className="absolute bottom-0 right-0 rounded-tl bg-black/75 px-1 text-[9px] font-semibold text-white">
+                                  ×{thumb.qty}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {extraCount > 0 && (
+                          <span className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] font-medium text-neutral-300">
+                            +{extraCount} more
+                          </span>
+                        )}
+                        <span className="text-[11px] text-neutral-500">
+                          {lines.length} {lines.length === 1 ? "guitar" : "guitars"}
+                        </span>
+                      </div>
+                    )}
+                    {lines.length === 0 && (
+                      <p className="mt-3 text-xs text-neutral-500">No guitars on this order</p>
+                    )}
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="text-2xl font-bold text-accent">
                       {order.currency === "USD" ? "$" : order.currency}{" "}
                       {order.totals.subtotal.toLocaleString("en-US", {
@@ -773,7 +841,8 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
