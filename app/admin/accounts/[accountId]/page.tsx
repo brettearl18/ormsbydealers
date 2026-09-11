@@ -279,11 +279,11 @@ export default function AccountDetailPage({
                   accountId: account.id,
                   accountName: account.name || account.id,
                 });
-                router.push("/orders");
+                router.push("/dashboard");
               }}
               className="rounded-full border border-amber-500/50 bg-amber-500/15 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-100 transition hover:bg-amber-500/25"
             >
-              View as dealer
+              View dealer dashboard
             </button>
             {(account as any).status && (
               <span
@@ -834,6 +834,19 @@ export default function AccountDetailPage({
                 Quick Actions
               </h3>
               <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDealerView({
+                      accountId: account.id,
+                      accountName: account.name || account.id,
+                    });
+                    router.push("/dashboard");
+                  }}
+                  className="block w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20"
+                >
+                  View dealer dashboard
+                </button>
                 <Link
                   href={`/admin/accounts?tab=orders`}
                   className="block w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/30 hover:bg-white/10"

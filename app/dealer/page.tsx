@@ -151,7 +151,7 @@ export default function DealerDashboard() {
     return (
       <main className="flex flex-1 items-center justify-center px-6">
         <p className="max-w-md text-center text-sm text-neutral-400">
-          Use <strong className="text-neutral-300">View as dealer</strong> on an account in Admin → Accounts to preview the catalog as that dealer.
+          Use <strong className="text-neutral-300">View dealer dashboard</strong> on an account in Admin → Accounts to preview the catalog as that dealer.
         </p>
       </main>
     );

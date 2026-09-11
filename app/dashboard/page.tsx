@@ -158,6 +158,16 @@ export default function DashboardPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-5 sm:gap-6">
+      {isAdminDealerPreview && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          You are viewing this dealer&apos;s dashboard for troubleshooting. Use the
+          nav for <strong className="font-semibold">Guitars</strong> and{" "}
+          <strong className="font-semibold">Orders</strong> as they see them.
+          Cart/checkout stay disabled — use{" "}
+          <strong className="font-semibold">Create order for account</strong>{" "}
+          from Admin if you need to place an order.
+        </div>
+      )}
       <header>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">

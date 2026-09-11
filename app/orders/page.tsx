@@ -104,7 +104,7 @@ export default function OrdersPage() {
         <div className="max-w-md text-center">
           <h1 className="text-2xl font-semibold text-white">Dealer order view</h1>
           <p className="mt-2 text-sm text-neutral-400">
-            Open an account in Admin → Accounts and choose <strong className="text-neutral-300">View as dealer</strong>{" "}
+            Open an account in Admin → Accounts and choose <strong className="text-neutral-300">View dealer dashboard</strong>{" "}
             to see the same order list that dealer sees.
           </p>
           <Link

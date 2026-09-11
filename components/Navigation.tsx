@@ -121,7 +121,7 @@ export function Navigation() {
             <span className="font-semibold text-amber-200">Dealer preview:</span>{" "}
             <span className="truncate">{dealerView.accountName}</span>
             <span className="ml-2 hidden text-xs text-amber-200/80 sm:inline">
-              (read-only — same orders as this dealer)
+              (troubleshooting — same dashboard, guitars &amp; orders they see; cart disabled)
             </span>
           </p>
           <button
