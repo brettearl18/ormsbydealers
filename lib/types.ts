@@ -35,6 +35,13 @@ export interface AccountDoc {
   /** Dealer-set tax/tariff % for cost estimation (e.g. 20 for 20% VAT). Applied later. */
   estimatedTaxPercent?: number;
   notes?: string;
+  /**
+   * Soft lifecycle. Missing/undefined treated as ACTIVE.
+   * ARCHIVED hides the account from the default admin list; data and orders are kept.
+   */
+  status?: "ACTIVE" | "ARCHIVED";
+  archivedAt?: string | null;
+  archivedBy?: string | null;
 }
 
 export interface AccountRequestDoc {

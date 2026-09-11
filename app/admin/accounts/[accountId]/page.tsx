@@ -8,6 +8,8 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } 
 import { db, functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { AccountDoc, OrderDoc, TierDoc, OrderLineDoc, GuitarDoc, ShippingAddress } from "@/lib/types";
+import { isAccountArchived } from "@/lib/account-status";
+import { getAuth } from "firebase/auth";
 import Link from "next/link";
 import {
   ArrowLeftIcon,
@@ -18,12 +20,13 @@ import {
   DocumentTextIcon,
   ClipboardDocumentIcon,
   ShoppingCartIcon,
+  ArchiveBoxIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
-const STATUS_COLORS = {
-  PENDING: "bg-yellow-500/20 text-yellow-400",
-  APPROVED: "bg-green-500/20 text-green-400",
-  SUSPENDED: "bg-red-500/20 text-red-400",
+const LIFECYCLE_COLORS = {
+  ACTIVE: "bg-green-500/20 text-green-400",
+  ARCHIVED: "bg-amber-500/20 text-amber-300",
 };
 
 function AddressFields({
@@ -120,6 +123,7 @@ export default function AccountDetailPage({
   const [formData, setFormData] = useState<Partial<AccountDoc> & { id?: string }>({});
   const [copyLinkLoading, setCopyLinkLoading] = useState(false);
   const [copyLinkMessage, setCopyLinkMessage] = useState<string | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   useEffect(() => {
     async function fetchAccount() {
@@ -223,6 +227,42 @@ export default function AccountDetailPage({
     fetchAccount();
   }, [accountId]);
 
+  async function handleArchiveToggle() {
+    if (!account) return;
+    const archived = isAccountArchived(account);
+    const ok = window.confirm(
+      archived
+        ? `Restore account ${account.id} to active?`
+        : `Archive account ${account.id}?\n\nHidden from the default accounts list. Orders and data are kept. You can restore later.`,
+    );
+    if (!ok) return;
+
+    setArchiveBusy(true);
+    try {
+      const auth = getAuth();
+      const next = archived
+        ? {
+            status: "ACTIVE" as const,
+            archivedAt: null,
+            archivedBy: null,
+            updatedAt: new Date().toISOString(),
+          }
+        : {
+            status: "ARCHIVED" as const,
+            archivedAt: new Date().toISOString(),
+            archivedBy: auth.currentUser?.uid || null,
+            updatedAt: new Date().toISOString(),
+          };
+      await updateDoc(doc(db, "accounts", account.id), next);
+      setAccount({ ...account, ...next });
+    } catch (err) {
+      console.error("Error updating account archive status:", err);
+      alert(archived ? "Failed to restore account." : "Failed to archive account.");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
   if (loading) {
     return (
       <AdminGuard>
@@ -251,6 +291,8 @@ export default function AccountDetailPage({
       </AdminGuard>
     );
   }
+
+  const archived = isAccountArchived(account);
 
   return (
     <AdminGuard>
@@ -285,18 +327,44 @@ export default function AccountDetailPage({
             >
               View dealer dashboard
             </button>
-            {(account as any).status && (
-              <span
-                className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wide ${
-                  STATUS_COLORS[(account as any).status as keyof typeof STATUS_COLORS] ||
-                  STATUS_COLORS.APPROVED
-                }`}
-              >
-                {(account as any).status || "APPROVED"}
-              </span>
-            )}
+            <span
+              className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wide ${
+                archived ? LIFECYCLE_COLORS.ARCHIVED : LIFECYCLE_COLORS.ACTIVE
+              }`}
+            >
+              {archived ? "Archived" : "Active"}
+            </span>
+            <button
+              type="button"
+              onClick={handleArchiveToggle}
+              disabled={archiveBusy}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-50 ${
+                archived
+                  ? "border border-green-500/40 bg-green-500/15 text-green-200 hover:bg-green-500/25"
+                  : "border border-amber-500/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+              }`}
+            >
+              {archived ? (
+                <ArrowPathIcon className="h-4 w-4" />
+              ) : (
+                <ArchiveBoxIcon className="h-4 w-4" />
+              )}
+              {archiveBusy
+                ? archived
+                  ? "Restoring…"
+                  : "Archiving…"
+                : archived
+                  ? "Restore account"
+                  : "Archive account"}
+            </button>
           </div>
         </div>
+
+        {archived && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            This account is archived. It is hidden from the default dealer list. Orders and data remain intact — restore anytime if you need it again.
+          </div>
+        )}
 
         {/* Edit Account form */}
         {editMode && (

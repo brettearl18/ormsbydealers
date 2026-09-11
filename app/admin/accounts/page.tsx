@@ -13,21 +13,22 @@ import {
   query,
   where,
   orderBy,
-  deleteDoc,
 } from "firebase/firestore";
 import { db, functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { AccountDoc, OrderDoc, OrderStatus, AccountRequestDoc } from "@/lib/types";
+import { isAccountArchived } from "@/lib/account-status";
 import { getAuth } from "firebase/auth";
 import { 
   CheckCircleIcon, 
   XCircleIcon, 
   DocumentArrowUpIcon,
-  CalendarIcon,
   BellIcon,
   UserGroupIcon,
   MagnifyingGlassIcon,
   ClipboardDocumentIcon,
+  ArchiveBoxIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
@@ -57,7 +58,6 @@ async function getUniqueAccountId(companyName: string): Promise<string> {
 
 interface AccountWithUsers extends AccountDoc {
   id: string;
-  status?: "PENDING" | "APPROVED" | "SUSPENDED";
   requestDate?: string;
   users?: Array<{
     uid: string;
@@ -103,7 +103,8 @@ function ManageAccountsContent() {
     accountType: "DEALER",
     contactName: "",
   });
-  const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
+  const [archiveAccountId, setArchiveAccountId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [copyLinkAccountId, setCopyLinkAccountId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -128,10 +129,9 @@ function ManageAccountsContent() {
         requestsSnap = await getDocs(query(collection(db, "accountRequests"), where("status", "==", "PENDING")));
       }
 
-      const accountsData = accountsSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        status: "APPROVED" as const, // Default status, can be extended
+      const accountsData = accountsSnap.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
       })) as AccountWithUsers[];
       
       // Sort requests manually if orderBy failed
@@ -187,6 +187,7 @@ function ManageAccountsContent() {
         territory: request.territory || null,
         contactName: request.contactName || null,
         contactEmail: request.email || null,
+        status: "ACTIVE",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -250,20 +251,6 @@ function ManageAccountsContent() {
     }
   }
 
-  async function approveAccount(accountId: string) {
-    try {
-      // Update account status
-      await updateDoc(doc(db, "accounts", accountId), {
-        status: "APPROVED",
-        approvedAt: new Date().toISOString(),
-      });
-      await fetchData();
-    } catch (err) {
-      console.error("Error approving account:", err);
-      alert("Failed to approve account");
-    }
-  }
-
   async function updateOrderStatus(orderId: string, status: OrderStatus) {
     try {
       await updateDoc(doc(db, "orders", orderId), {
@@ -305,6 +292,7 @@ function ManageAccountsContent() {
         contactEmail,
         territory,
         discountPercent: createForm.discountPercent || 0,
+        status: "ACTIVE",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -410,45 +398,64 @@ function ManageAccountsContent() {
     }
   }
 
-  async function handleDeleteAccount(accountIdToDelete: string) {
-    const orderCount = orders.filter((o) => o.accountId === accountIdToDelete).length;
+  async function handleArchiveAccount(accountIdToArchive: string) {
+    const orderCount = orders.filter((o) => o.accountId === accountIdToArchive).length;
     const ok = window.confirm(
-      orderCount > 0
-        ? `Delete account ${accountIdToDelete}?\n\nThis account has ${orderCount} non-cancelled order(s) and they will be left as-is.`
-        : `Delete account ${accountIdToDelete}?`,
+      `Archive account ${accountIdToArchive}?\n\n` +
+        `The account will be hidden from the default list. Orders and data are kept` +
+        (orderCount > 0 ? ` (${orderCount} non-cancelled order(s)).` : ".") +
+        `\n\nYou can restore it later from “Show archived”.`,
     );
     if (!ok) return;
 
-    setDeleteAccountId(accountIdToDelete);
+    setArchiveAccountId(accountIdToArchive);
     try {
-      // Delete account
-      await deleteDoc(doc(db, "accounts", accountIdToDelete));
-
-      // Also delete any users linked to this account (best-effort)
-      try {
-        const usersSnap = await getDocs(
-          query(collection(db, "users"), where("accountId", "==", accountIdToDelete)),
-        );
-        await Promise.all(
-          usersSnap.docs.map((u) => deleteDoc(doc(db, "users", u.id))),
-        );
-      } catch (err) {
-        console.warn("Could not delete linked users:", err);
-      }
-
+      const auth = getAuth();
+      await updateDoc(doc(db, "accounts", accountIdToArchive), {
+        status: "ARCHIVED",
+        archivedAt: new Date().toISOString(),
+        archivedBy: auth.currentUser?.uid || null,
+        updatedAt: new Date().toISOString(),
+      });
       await fetchData();
-      alert("Account deleted successfully.");
     } catch (err) {
-      console.error("Error deleting account:", err);
-      alert("Failed to delete account.");
+      console.error("Error archiving account:", err);
+      alert("Failed to archive account.");
     } finally {
-      setDeleteAccountId(null);
+      setArchiveAccountId(null);
     }
   }
 
-  const filteredAccounts = accounts.filter((account) =>
-    account.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  async function handleRestoreAccount(accountIdToRestore: string) {
+    const ok = window.confirm(`Restore account ${accountIdToRestore} to active?`);
+    if (!ok) return;
+
+    setArchiveAccountId(accountIdToRestore);
+    try {
+      await updateDoc(doc(db, "accounts", accountIdToRestore), {
+        status: "ACTIVE",
+        archivedAt: null,
+        archivedBy: null,
+        updatedAt: new Date().toISOString(),
+      });
+      await fetchData();
+    } catch (err) {
+      console.error("Error restoring account:", err);
+      alert("Failed to restore account.");
+    } finally {
+      setArchiveAccountId(null);
+    }
+  }
+
+  const archivedCount = accounts.filter((a) => isAccountArchived(a)).length;
+  const activeCount = accounts.length - archivedCount;
+
+  const filteredAccounts = accounts.filter((account) => {
+    const matchesSearch = account.name.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (showArchived) return isAccountArchived(account);
+    return !isAccountArchived(account);
+  });
   
   const pendingRequests = accountRequests.filter((req) => req.status === "PENDING");
 
@@ -479,7 +486,7 @@ function ManageAccountsContent() {
             }`}
           >
             <UserGroupIcon className="mr-2 inline h-4 w-4" />
-            Accounts ({accounts.length})
+            Accounts ({showArchived ? archivedCount : activeCount})
           </button>
           <button
             onClick={() => setActiveTab("requests")}
@@ -531,7 +538,16 @@ function ManageAccountsContent() {
               />
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="rounded border-white/20 bg-white/5 text-accent focus:ring-accent"
+                />
+                Show archived{archivedCount > 0 ? ` (${archivedCount})` : ""}
+              </label>
               <button
                 type="button"
                 onClick={() => {
@@ -775,27 +791,37 @@ function ManageAccountsContent() {
               </div>
             ) : filteredAccounts.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
-                <p className="text-sm text-neutral-400">No accounts found</p>
+                <p className="text-sm text-neutral-400">
+                  {showArchived ? "No archived accounts" : "No accounts found"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredAccounts.map((account) => (
+                {filteredAccounts.map((account) => {
+                  const archived = isAccountArchived(account);
+                  return (
                   <div
                     key={account.id}
-                    className="rounded-lg border border-white/10 bg-white/5 p-4"
+                    className={`rounded-lg border p-4 ${
+                      archived
+                        ? "border-white/5 bg-white/[0.03] opacity-80"
+                        : "border-white/10 bg-white/5"
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <h3 className="font-semibold text-white">{account.name}</h3>
-                          {account.status === "PENDING" && (
-                            <span className="rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">
-                              Pending Approval
+                          <span className="rounded-full bg-neutral-500/20 px-2 py-1 text-xs font-medium text-neutral-300">
+                            {account.id}
+                          </span>
+                          {archived ? (
+                            <span className="rounded-full bg-amber-500/20 px-2 py-1 text-xs font-medium text-amber-300">
+                              Archived
                             </span>
-                          )}
-                          {account.status === "APPROVED" && (
+                          ) : (
                             <span className="rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400">
-                              Approved
+                              Active
                             </span>
                           )}
                         </div>
@@ -816,25 +842,19 @@ function ManageAccountsContent() {
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        {account.status === "PENDING" && (
-                          <button
-                            onClick={() => approveAccount(account.id)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-green-500/20 px-4 py-2 text-sm font-medium text-green-400 transition hover:bg-green-500/30"
-                          >
-                            <CheckCircleIcon className="h-4 w-4" />
-                            Approve
-                          </button>
-                        )}
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => handleCopySetupLink(account.id)}
                           disabled={
                             copyLinkAccountId === account.id ||
-                            !(account as AccountWithUsers).contactEmail?.trim()
+                            !account.contactEmail?.trim() ||
+                            archived
                           }
                           title={
-                            (account as AccountWithUsers).contactEmail?.trim()
+                            archived
+                              ? "Restore account before copying setup link"
+                              : account.contactEmail?.trim()
                               ? "Copy password-setup link to paste into your own email to the dealer"
                               : "Set contact email on account first"
                           }
@@ -851,18 +871,32 @@ function ManageAccountsContent() {
                         >
                           View Details
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAccount(account.id)}
-                          disabled={deleteAccountId === account.id}
-                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:border-red-500/30 hover:bg-red-500/20 disabled:opacity-50"
-                        >
-                          {deleteAccountId === account.id ? "Deleting..." : "Delete"}
-                        </button>
+                        {archived ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreAccount(account.id)}
+                            disabled={archiveAccountId === account.id}
+                            className="inline-flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-300 transition hover:border-green-500/30 hover:bg-green-500/20 disabled:opacity-50"
+                          >
+                            <ArrowPathIcon className="h-4 w-4" />
+                            {archiveAccountId === account.id ? "Restoring…" : "Restore"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleArchiveAccount(account.id)}
+                            disabled={archiveAccountId === account.id}
+                            className="inline-flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 transition hover:border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50"
+                          >
+                            <ArchiveBoxIcon className="h-4 w-4" />
+                            {archiveAccountId === account.id ? "Archiving…" : "Archive"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
