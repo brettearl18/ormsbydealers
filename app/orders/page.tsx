@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
-import { useEffect, useState } from "react";
+import { filterDealerVisibleOrders } from "@/lib/dealer-orders";
+import { useEffect, useState, useMemo } from "react";
 import { collection, query, where, orderBy, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OrderDoc, OrderStatus } from "@/lib/types";
@@ -37,6 +38,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Array<OrderDoc & { id: string }>>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHiddenOrders, setShowHiddenOrders] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -86,6 +88,16 @@ export default function OrdersPage() {
     fetchOrders();
   }, [user, authLoading, router, effectiveAccountId]);
 
+  const visibleOrders = useMemo(
+    () => filterDealerVisibleOrders(orders),
+    [orders],
+  );
+  const hiddenOrders = useMemo(
+    () => orders.filter((o) => o.status === "DRAFT" || o.status === "CANCELLED"),
+    [orders],
+  );
+  const displayedOrders = showHiddenOrders ? orders : visibleOrders;
+
   if (authLoading || fetching) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -131,7 +143,7 @@ export default function OrdersPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white">
             {isAdminDealerPreview && dealerView ? `${dealerView.accountName} — orders` : "Your orders"}
@@ -142,15 +154,27 @@ export default function OrdersPage() {
               : "View and track your purchase orders"}
           </p>
         </div>
-        {orders.length > 0 && (
-          <div className="hidden sm:block">
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2">
+        <div className="flex flex-col items-end gap-2">
+          {visibleOrders.length > 0 && (
+            <div className="hidden rounded-xl border border-white/10 bg-white/5 px-4 py-2 sm:block">
               <p className="text-sm font-semibold text-white">
-                {orders.length} {orders.length === 1 ? "order" : "orders"}
+                {visibleOrders.length}{" "}
+                {visibleOrders.length === 1 ? "order" : "orders"}
               </p>
             </div>
-          </div>
-        )}
+          )}
+          {hiddenOrders.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowHiddenOrders((v) => !v)}
+              className="text-xs font-medium text-neutral-400 transition hover:text-white"
+            >
+              {showHiddenOrders
+                ? "Hide drafts & cancelled"
+                : `Show drafts & cancelled (${hiddenOrders.length})`}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -161,19 +185,33 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {orders.length === 0 ? (
+      {displayedOrders.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-2xl bg-surface/80 p-12 text-center">
-          <p className="text-sm text-neutral-400">No orders yet</p>
-          <Link
-            href="/dealer"
-            className="rounded-full bg-accent px-6 py-3 text-sm font-medium text-black shadow-soft transition hover:bg-accent-soft"
-          >
-            Start shopping
-          </Link>
+          <p className="text-sm text-neutral-400">
+            {orders.length > 0 && !showHiddenOrders
+              ? "No active orders — drafts and cancelled are hidden."
+              : "No orders yet"}
+          </p>
+          {orders.length > 0 && !showHiddenOrders && hiddenOrders.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowHiddenOrders(true)}
+              className="rounded-full border border-white/15 px-6 py-3 text-sm font-medium text-white transition hover:border-white/30"
+            >
+              Show drafts & cancelled ({hiddenOrders.length})
+            </button>
+          ) : (
+            <Link
+              href="/dealer"
+              className="rounded-full bg-accent px-6 py-3 text-sm font-medium text-black shadow-soft transition hover:bg-accent-soft"
+            >
+              Start shopping
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((order) => {
+          {displayedOrders.map((order) => {
             const formattedDate = order.createdAt
               ? new Date(order.createdAt).toLocaleDateString("en-US", {
                   year: "numeric",

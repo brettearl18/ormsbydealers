@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useEffectiveAccountId, useDealerView } from "@/lib/dealer-view-context";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OrderDoc, AccountDoc } from "@/lib/types";
+import { filterDealerVisibleOrders } from "@/lib/dealer-orders";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { RecentOrdersList } from "@/components/dashboard/RecentOrdersList";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
@@ -126,6 +127,15 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, [user, authLoading, router, effectiveAccountId, isAdminDealerPreview]);
 
+  const activeOrders = useMemo(() => filterDealerVisibleOrders(orders), [orders]);
+
+  // Calculate stats (exclude drafts & cancelled so dealers aren't confused)
+  const totalOrders = activeOrders.length;
+  const submittedOrders = activeOrders.filter((o) => o.status === "SUBMITTED").length;
+  const approvedOrders = activeOrders.filter((o) => o.status === "APPROVED").length;
+  const inProductionOrders = activeOrders.filter((o) => o.status === "IN_PRODUCTION").length;
+  const shippedOrders = activeOrders.filter((o) => o.status === "SHIPPED").length;
+
   if (authLoading || fetching) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -139,13 +149,6 @@ export default function DashboardPage() {
   }
 
   const displayCurrency = resolveDisplayCurrency(account, user);
-
-  // Calculate stats
-  const totalOrders = orders.length;
-  const submittedOrders = orders.filter((o) => o.status === "SUBMITTED").length;
-  const approvedOrders = orders.filter((o) => o.status === "APPROVED").length;
-  const inProductionOrders = orders.filter((o) => o.status === "IN_PRODUCTION").length;
-  const shippedOrders = orders.filter((o) => o.status === "SHIPPED").length;
 
   function formatMoney(amount: number, currency: string) {
     return new Intl.NumberFormat(undefined, {
@@ -241,7 +244,7 @@ export default function DashboardPage() {
               </Link>
             </div>
             <RecentOrdersList
-              orders={orders}
+              orders={activeOrders}
               currency={displayCurrency}
               isLoading={fetching}
               accountName={account?.name}
