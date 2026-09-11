@@ -5,6 +5,8 @@ interface Props {
   /** Prefer Firestore account currency (Settings); overrides token claims */
   currency?: string | null;
   accountName?: string;
+  /** Account contact email — preferred over the logged-in user's email (esp. admin preview). */
+  contactEmail?: string | null;
   territory?: string;
   /** Dealer discount % off RRP (e.g. 30 = 30% off). Shown prominently so dealers see their pricing. */
   discountPercent?: number | null;
@@ -14,11 +16,13 @@ export function AccountInfoCard({
   user,
   currency,
   accountName,
+  contactEmail,
   territory,
   discountPercent,
 }: Props) {
   const displayCurrency = currency?.trim() || user.currency || "—";
   const hasDiscount = discountPercent != null && discountPercent > 0;
+  const displayEmail = (contactEmail?.trim() || user.email || "").trim();
 
   return (
     <div className="glass-strong rounded-2xl p-4 shadow-xl sm:p-5">
@@ -44,14 +48,16 @@ export function AccountInfoCard({
             </p>
           </div>
         )}
-        <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-            Email
-          </p>
-          <p className="mt-0.5 truncate text-sm font-semibold text-white" title={user.email ?? ""}>
-            {user.email}
-          </p>
-        </div>
+        {displayEmail && (
+          <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+              Email
+            </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-white" title={displayEmail}>
+              {displayEmail}
+            </p>
+          </div>
+        )}
         {user.tierId && (
           <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Tier</p>

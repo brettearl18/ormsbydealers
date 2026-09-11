@@ -189,6 +189,7 @@ export default function DashboardPage() {
         user={user}
         currency={account?.currency}
         accountName={account?.name}
+        contactEmail={account?.contactEmail}
         territory={account?.territory}
         discountPercent={account?.discountPercent ?? null}
       />
