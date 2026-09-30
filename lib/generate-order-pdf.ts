@@ -1,18 +1,28 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { doc as firestoreDoc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { getRRPForVariant } from "@/lib/pricing";
 import type {
   AccountDoc,
   FxRatesDoc,
   GuitarDoc,
   OrderDoc,
   OrderLineDoc,
+  PricesDoc,
   ShippingAddress,
 } from "@/lib/types";
 import { resolveLineOptionLabels } from "@/lib/order-line-options";
 
 export type OrderPdfAccount = Pick<
   AccountDoc,
-  "name" | "tierId" | "currency" | "contactEmail" | "contactName" | "territory"
+  | "name"
+  | "tierId"
+  | "currency"
+  | "contactEmail"
+  | "contactName"
+  | "territory"
+  | "discountPercent"
 > & { id: string };
 
 export interface GenerateOrderPdfParams {
@@ -171,6 +181,28 @@ async function fetchFxForPdf(): Promise<FxRatesDoc | null> {
   }
 }
 
+async function fetchPricesForGuitars(
+  guitarIds: string[],
+): Promise<Map<string, PricesDoc | null>> {
+  const map = new Map<string, PricesDoc | null>();
+  await Promise.all(
+    guitarIds.map(async (guitarId) => {
+      try {
+        const snap = await getDoc(firestoreDoc(db, "prices", guitarId));
+        map.set(guitarId, snap.exists() ? (snap.data() as PricesDoc) : null);
+      } catch {
+        map.set(guitarId, null);
+      }
+    }),
+  );
+  return map;
+}
+
+function formatPercent(pct: number): string {
+  const rounded = Math.round(pct * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+}
+
 function imageFormatFromDataUrl(dataUrl: string): "JPEG" | "PNG" {
   if (dataUrl.includes("image/png")) return "PNG";
   return "JPEG";
@@ -267,8 +299,9 @@ export async function downloadOrderPdf(
   const territory = account?.territory?.trim();
   const shortRef = order.id.slice(0, 8).toUpperCase();
 
-  const [fx, lineImages] = await Promise.all([
+  const [fx, pricesMap, lineImages] = await Promise.all([
     fetchFxForPdf(),
+    fetchPricesForGuitars([...new Set(lines.map((l) => l.guitarId))]),
     (async () => {
       const map = new Map<string, string | null>();
       await Promise.all(
@@ -289,6 +322,22 @@ export async function downloadOrderPdf(
   const usdRate = fx?.rates.USD ?? null;
   const eurRate = fx?.rates.EUR ?? null;
   const showUsdEurApprox = hasUsdEurApprox(fx);
+
+  const accountDiscount = account?.discountPercent ?? 0;
+  const lineRrps = lines.map((line) => {
+    const guitar = guitarsMap.get(line.guitarId);
+    const rrp = getRRPForVariant(
+      pricesMap.get(line.guitarId) ?? null,
+      guitar?.options ?? null,
+      line.selectedOptions ?? null,
+      accountDiscount,
+    );
+    return rrp != null && rrp > 0 ? rrp : null;
+  });
+  const allLinesHaveRrp = lines.length > 0 && lineRrps.every((r) => r != null);
+  const rrpTotal = allLinesHaveRrp
+    ? lines.reduce((sum, line, i) => sum + (lineRrps[i] as number) * line.qty, 0)
+    : null;
 
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -388,6 +437,7 @@ export async function downloadOrderPdf(
     account?.contactName ? `Contact: ${account.contactName}` : "",
     account?.contactEmail ? `Email: ${account.contactEmail}` : "",
     account?.tierId ? `Tier: ${account.tierId}` : "",
+    accountDiscount > 0 ? `Dealer discount: ${formatPercent(accountDiscount)} off RRP` : "",
   ].filter(Boolean);
   const yRight = drawWrappedLines(
     dealerLines,
@@ -409,19 +459,24 @@ export async function downloadOrderPdf(
   y += 6;
 
   const unitHeader = showUsdEurApprox
-    ? `Unit (${AUD} / USD / EUR approx)`
-    : `Unit (${AUD})`;
+    ? `Dealer unit (${AUD} / USD / EUR approx)`
+    : `Dealer unit (${AUD})`;
   const totalHeader = showUsdEurApprox
     ? `Line total (${AUD} / USD / EUR approx)`
     : `Line total (${AUD})`;
 
   const body = lines.map((line, index) => {
     const guitar = guitarsMap.get(line.guitarId);
+    const rrp = lineRrps[index];
+    const discountPct =
+      rrp != null ? Math.max(0, (1 - line.unitPrice / rrp) * 100) : null;
     return [
       "",
       String(index + 1),
       lineDescription(line, guitar),
       String(line.qty),
+      rrp != null ? formatMoney(rrp, AUD) : "-",
+      discountPct != null ? formatPercent(discountPct) : "-",
       dualPriceLine(line.unitPrice, fx),
       dualPriceLine(line.lineTotal, fx),
     ];
@@ -431,7 +486,7 @@ export async function downloadOrderPdf(
 
   autoTable(doc, {
     startY: y,
-    head: [["", "#", "Description", "Qty", unitHeader, totalHeader]],
+    head: [["", "#", "Description", "Qty", `RRP (${AUD})`, "Disc.", unitHeader, totalHeader]],
     body,
     styles: {
       fontSize: 7.5,
@@ -448,10 +503,12 @@ export async function downloadOrderPdf(
     columnStyles: {
       [THUMB_COL]: { cellWidth: IMG_CELL_MM },
       1: { cellWidth: 7, halign: "center" },
-      2: { cellWidth: 54 },
-      3: { cellWidth: 10, halign: "center" },
-      4: { cellWidth: 38, halign: "right" },
-      5: { cellWidth: 38, halign: "right" },
+      2: { cellWidth: 44 },
+      3: { cellWidth: 9, halign: "center" },
+      4: { cellWidth: 22, halign: "right" },
+      5: { cellWidth: 13, halign: "center" },
+      6: { cellWidth: 34, halign: "right" },
+      7: { cellWidth: 34, halign: "right" },
     },
     margin: { left: margin, right: margin },
     theme: "striped",
@@ -463,7 +520,7 @@ export async function downloadOrderPdf(
       if (data.column.index === THUMB_COL && rowHasImage[rowIdx]) {
         data.cell.styles.minCellHeight = IMG_CELL_MM;
       }
-      if ((data.column.index === 4 || data.column.index === 5) && showUsdEurApprox) {
+      if ((data.column.index === 6 || data.column.index === 7) && showUsdEurApprox) {
         const linesCount =
           1 + (usdRate != null ? 1 : 0) + (eurRate != null ? 1 : 0);
         data.cell.styles.minCellHeight = Math.max(
@@ -516,7 +573,10 @@ export async function downloadOrderPdf(
 
   const subtotalLineMm = 6.5;
   const totalsLineCount =
-    1 + (usdRate != null ? 1 : 0) + (eurRate != null ? 1 : 0);
+    1 +
+    (rrpTotal != null ? 2 : 0) +
+    (usdRate != null ? 1 : 0) +
+    (eurRate != null ? 1 : 0);
   const totalsBlockMm = 8 + totalsLineCount * subtotalLineMm;
 
   let footerTailMm = 12;
@@ -538,10 +598,32 @@ export async function downloadOrderPdf(
   doc.line(margin, footY - 3, pageW - margin, footY - 3);
   footY += 4;
 
+  const subtotalAud = order.totals.subtotal;
+
+  if (rrpTotal != null) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(30, 30, 30);
+    doc.text(`RRP total (${AUD})`, pageW - margin - 58, footY);
+    doc.text(formatMoney(rrpTotal, AUD), pageW - margin, footY, { align: "right" });
+    footY += subtotalLineMm;
+
+    const discountAmount = Math.max(0, rrpTotal - subtotalAud);
+    const discountPctTotal = rrpTotal > 0 ? (discountAmount / rrpTotal) * 100 : 0;
+    doc.text(
+      `Less dealer discount (${formatPercent(discountPctTotal)})`,
+      pageW - margin - 58,
+      footY,
+    );
+    doc.text(`-${formatMoney(discountAmount, AUD)}`, pageW - margin, footY, {
+      align: "right",
+    });
+    footY += subtotalLineMm;
+  }
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(30, 30, 30);
-  const subtotalAud = order.totals.subtotal;
   doc.text(`Subtotal (${AUD})`, pageW - margin - 58, footY);
   doc.text(formatMoney(subtotalAud, AUD), pageW - margin, footY, {
     align: "right",
