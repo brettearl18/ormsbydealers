@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { use } from "react";
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { stripUndefined } from "@/lib/firestore-clean";
 import { AvailabilityDoc, AvailabilityState, GuitarDoc } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeftIcon, EyeIcon } from "@heroicons/react/24/outline";
@@ -154,7 +155,7 @@ export default function EditGuitarPage({
       };
 
       await updateDoc(doc(db, "guitars", guitarId), {
-        ...guitarData,
+        ...stripUndefined(guitarData),
         updatedAt: serverTimestamp(),
       });
 

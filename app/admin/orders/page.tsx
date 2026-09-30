@@ -730,9 +730,9 @@ export default function AdminOrdersPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold text-white group-hover:text-accent transition-colors">
-                        Order #{order.id.slice(0, 8).toUpperCase()}
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-lg font-bold text-white transition-colors group-hover:text-accent">
+                        {order.shippingAddress?.company?.trim() || "No company name"}
                       </h3>
                       {order.pendingOrmsbyRevisionReview && (
                         <span
@@ -758,7 +758,15 @@ export default function AdminOrdersPage() {
                         {STATUS_LABELS[order.status]}
                       </span>
                     </div>
-                    <div className="grid gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+                      <span>Order #{order.id.slice(0, 8).toUpperCase()}</span>
+                      {order.poNumber && (
+                        <span>
+                          PO: <span className="text-neutral-300">{order.poNumber}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
                       <div className="flex items-center gap-2">
                         <CalendarIcon className="h-4 w-4 text-neutral-500" />
                         <span>
@@ -771,23 +779,13 @@ export default function AdminOrdersPage() {
                           })}
                         </span>
                       </div>
-                      {order.shippingAddress?.company && (
-                        <div>
-                          <span className="text-neutral-500">Company:</span>{" "}
-                          <span className="font-medium text-white">
-                            {order.shippingAddress.company}
-                          </span>
-                        </div>
-                      )}
-                      {order.poNumber && (
-                        <div>
-                          <span className="text-neutral-500">PO:</span>{" "}
-                          <span className="font-medium text-white">{order.poNumber}</span>
-                        </div>
-                      )}
                       <div>
                         <span className="text-neutral-500">Currency:</span>{" "}
                         <span className="font-medium text-white">{order.currency}</span>
+                      </div>
+                      <div>
+                        <span className="text-neutral-500">Guitars:</span>{" "}
+                        <span className="font-medium text-white">{lines.length}</span>
                       </div>
                     </div>
 
@@ -820,9 +818,6 @@ export default function AdminOrdersPage() {
                             +{extraCount} more
                           </span>
                         )}
-                        <span className="text-[11px] text-neutral-500">
-                          {lines.length} {lines.length === 1 ? "guitar" : "guitars"}
-                        </span>
                       </div>
                     )}
                     {lines.length === 0 && (
@@ -830,7 +825,7 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-2xl font-bold text-accent">
+                    <p className="text-xl font-bold text-accent">
                       {order.currency === "USD" ? "$" : order.currency}{" "}
                       {order.totals.subtotal.toLocaleString("en-US", {
                         minimumFractionDigits: 2,

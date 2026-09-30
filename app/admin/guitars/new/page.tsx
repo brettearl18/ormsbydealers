@@ -5,6 +5,7 @@ import { GuitarOptionsManager } from "@/components/admin/GuitarOptionsManager";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { stripUndefined } from "@/lib/firestore-clean";
 import { db } from "@/lib/firebase";
 import { GuitarDoc } from "@/lib/types";
 import Link from "next/link";
@@ -84,7 +85,7 @@ export default function NewGuitarPage() {
       };
 
       await addDoc(collection(db, "guitars"), {
-        ...guitarData,
+        ...stripUndefined(guitarData),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
